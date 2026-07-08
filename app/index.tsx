@@ -14,7 +14,7 @@ export default function HomeScreen() {
       header={
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>CENTENO</Text>
-          <Text style={styles.title}>Recetas de pan con porcentaje panadero</Text>
+          <Text style={styles.title}>Formulas panaderas con porcentaje panadero</Text>
           <Text style={styles.subtitle}>
             Base simple para guardar formulas, recalcular harina y revisar hidratacion.
           </Text>
@@ -23,7 +23,7 @@ export default function HomeScreen() {
     >
       <View style={styles.actions}>
         <Pressable onPress={() => router.push("/recipes/form")} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Nueva receta</Text>
+          <Text style={styles.primaryButtonText}>Nueva formula</Text>
         </Pressable>
         <Pressable onPress={() => router.push("/calculator")} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonText}>Calculadora</Text>
@@ -31,7 +31,7 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>Tus recetas</Text>
+        <Text style={styles.listTitle}>Tus formulas</Text>
         <Text style={styles.listMeta}>{recipes.length} guardadas</Text>
       </View>
 
@@ -116,4 +116,3 @@ const styles = StyleSheet.create({
     fontSize: 13
   }
 });
-

@@ -10,7 +10,16 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5a21946d-6c27-42f8-a459-a1908bc281ac"
+      }
+    },
+    "owner": "maleguiro",
+    "android": {
+      "package": "com.maleguiro.centeno"
     }
   }
 }
-

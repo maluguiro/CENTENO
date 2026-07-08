@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
 import { getRecipeSummary, getScaledDoughWeight, scaleIngredients } from "@/lib/baker";
+import { ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
 
@@ -26,7 +27,7 @@ export default function RecipeDetailScreen() {
   if (!recipe) {
     return (
       <Screen>
-        <Text style={styles.title}>Receta no encontrada</Text>
+        <Text style={styles.title}>Formula no encontrada</Text>
       </Screen>
     );
   }
@@ -37,7 +38,7 @@ export default function RecipeDetailScreen() {
     <Screen
       header={
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>DETALLE</Text>
+          <Text style={styles.eyebrow}>FORMULA</Text>
           <Text style={styles.title}>{recipe.name}</Text>
           {recipe.description ? <Text style={styles.subtitle}>{recipe.description}</Text> : null}
         </View>
@@ -69,7 +70,7 @@ export default function RecipeDetailScreen() {
 
       <View style={styles.metrics}>
         <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Harina base</Text>
+          <Text style={styles.metricLabel}>Harina total</Text>
           <Text style={styles.metricValue}>{summary.baseQuantity} g</Text>
         </View>
         <View style={styles.metricCard}>
@@ -77,7 +78,15 @@ export default function RecipeDetailScreen() {
           <Text style={styles.metricValue}>{summary.hydration}%</Text>
         </View>
         <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Peso masa</Text>
+          <Text style={styles.metricLabel}>Indice de humedad</Text>
+          <Text style={styles.metricValue}>{summary.moistureIndex}%</Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Grasas</Text>
+          <Text style={styles.metricValue}>{summary.fats} g</Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Peso total de masa</Text>
           <Text style={styles.metricValue}>{summary.doughWeight} g</Text>
         </View>
       </View>
@@ -90,7 +99,7 @@ export default function RecipeDetailScreen() {
       ) : null}
 
       <View style={styles.calculatorCard}>
-        <Text style={styles.sectionTitle}>Escalar receta</Text>
+        <Text style={styles.sectionTitle}>Recalcular formula</Text>
         <TextInput
           keyboardType="decimal-pad"
           onChangeText={setFlourTarget}
@@ -100,7 +109,7 @@ export default function RecipeDetailScreen() {
           value={flourTarget}
         />
         <Text style={styles.helperText}>
-          Cambia la harina total y la formula recalcula todas las cantidades desde el porcentaje panadero.
+          Cambia la harina total y la formula recalcula las cantidades desde el porcentaje panadero.
         </Text>
         <Text style={styles.helperText}>
           Peso recalculado: {getScaledDoughWeight(recipe.ingredients, Number(flourTarget) || 0)} g
@@ -108,13 +117,13 @@ export default function RecipeDetailScreen() {
       </View>
 
       <View style={styles.ingredientsCard}>
-        <Text style={styles.sectionTitle}>Ingredientes</Text>
+        <Text style={styles.sectionTitle}>Ingredientes recalculados</Text>
         {scaledIngredients.map((ingredient) => (
           <View key={ingredient.id} style={styles.ingredientRow}>
             <View style={styles.ingredientMain}>
               <Text style={styles.ingredientName}>{ingredient.name}</Text>
               <Text style={styles.ingredientMeta}>
-                {ingredient.role} · {ingredient.bakerPercentage}%
+                {ingredientRoleLabels[ingredient.role]} - {ingredient.bakerPercentage}%
               </Text>
             </View>
             <Text style={styles.ingredientQty}>
@@ -193,6 +202,7 @@ const styles = StyleSheet.create({
   },
   metrics: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.sm
   },
   metricCard: {
@@ -200,8 +210,8 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     borderRadius: theme.radius.md,
     borderWidth: 1,
-    flex: 1,
     gap: 8,
+    minWidth: "47%",
     padding: theme.spacing.md
   },
   notesCard: {

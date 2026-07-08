@@ -8,11 +8,13 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "validate:baker": "tsx src/lib/baker.validation.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "latest",
     "expo": "latest",
+    "expo-dev-client": "~57.0.5",
     "expo-linear-gradient": "latest",
     "expo-router": "latest",
     "expo-status-bar": "latest",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@types/react": "latest",
+    "tsx": "latest",
     "typescript": "latest"
   }
 }

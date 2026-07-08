@@ -23,7 +23,7 @@ export function RecipeCard({ recipe, onPress }: RecipeCardProps) {
       {recipe.description ? <Text style={styles.description}>{recipe.description}</Text> : null}
       <View style={styles.metaRow}>
         <Text style={styles.meta}>{summary.ingredientCount} ingredientes</Text>
-        <Text style={styles.meta}>Base {summary.baseQuantity} g</Text>
+        <Text style={styles.meta}>Harina {summary.baseQuantity} g</Text>
         <Text style={styles.meta}>Masa {summary.doughWeight} g</Text>
       </View>
     </Pressable>

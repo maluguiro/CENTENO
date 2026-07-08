@@ -25,7 +25,7 @@ export default function CalculatorScreen() {
           <Text style={styles.eyebrow}>CALCULADORA</Text>
           <Text style={styles.title}>Reescalar formulas rapido</Text>
           <Text style={styles.subtitle}>
-            Pantalla minima para comparar recetas y recalcular desde la harina base.
+            Pantalla minima para comparar formulas y recalcular desde la harina total.
           </Text>
         </View>
       }
@@ -71,7 +71,7 @@ export default function CalculatorScreen() {
         <Text style={styles.sectionTitle}>Resultado</Text>
         {selectedRecipe ? (
           <Text style={styles.helperText}>
-            Hidratacion {getRecipeSummary(selectedRecipe).hydration}% · Masa{" "}
+            Hidratacion {getRecipeSummary(selectedRecipe).hydration}% - Masa{" "}
             {getScaledDoughWeight(selectedRecipe.ingredients, Number(flourTarget) || 0)} g
           </Text>
         ) : null}
@@ -79,7 +79,7 @@ export default function CalculatorScreen() {
           scaled.map((ingredient) => (
             <View key={ingredient.id} style={styles.resultRow}>
               <Text style={styles.resultName}>
-                {ingredient.name} ({ingredient.role} · {ingredient.bakerPercentage}%)
+                {ingredient.name} ({ingredient.role} - {ingredient.bakerPercentage}%)
               </Text>
               <Text style={styles.resultQty}>
                 {ingredient.scaledQuantity} {ingredient.unit}
@@ -87,7 +87,7 @@ export default function CalculatorScreen() {
             </View>
           ))
         ) : (
-          <Text style={styles.emptyText}>No hay recetas para calcular.</Text>
+          <Text style={styles.emptyText}>No hay formulas para calcular.</Text>
         )}
       </View>
     </Screen>

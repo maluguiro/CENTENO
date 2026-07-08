@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { theme } from "@/theme";
 import type {
   IngredientRole,
@@ -19,18 +20,6 @@ const roles: IngredientRole[] = [
   "fat",
   "other"
 ];
-
-const roleLabel: Record<IngredientRole, string> = {
-  flour: "Harina",
-  water: "Agua",
-  salt: "Sal",
-  yeast: "Levadura",
-  sourdough: "Masa madre",
-  preferment: "Prefermento",
-  sugar: "Azucar",
-  fat: "Grasa",
-  other: "Otro"
-};
 
 type IngredientEditorProps = {
   ingredient: RecipeIngredient;
@@ -121,7 +110,7 @@ export function IngredientEditor({
                 ingredient.role === role && styles.roleTextActive
               ]}
             >
-              {roleLabel[role]}
+              {ingredientRoleLabels[role]}
             </Text>
           </Pressable>
         ))}

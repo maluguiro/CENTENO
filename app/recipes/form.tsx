@@ -60,7 +60,7 @@ export default function RecipeFormScreen() {
     );
 
     if (!name.trim()) {
-      Alert.alert("Falta el nombre", "La receta necesita un nombre.");
+      Alert.alert("Falta el nombre", "La formula necesita un nombre.");
       return;
     }
 
@@ -105,10 +105,10 @@ export default function RecipeFormScreen() {
         <View style={styles.header}>
           <Text style={styles.eyebrow}>{isEditing ? "EDITAR" : "NUEVA"}</Text>
           <Text style={styles.title}>
-            {isEditing ? "Ajustar receta" : "Crear receta"}
+            {isEditing ? "Editar formula" : "Crear formula"}
           </Text>
           <Text style={styles.subtitle}>
-            Carga formula, define base de harina y deja la receta lista para escalar.
+            Carga la formula, define la harina base y deja todo listo para recalcular.
           </Text>
         </View>
       }
@@ -116,7 +116,7 @@ export default function RecipeFormScreen() {
       <View style={styles.card}>
         <TextInput
           onChangeText={setName}
-          placeholder="Nombre de la receta"
+          placeholder="Nombre de la formula"
           placeholderTextColor={theme.colors.textMuted}
           style={styles.input}
           value={name}
@@ -141,7 +141,7 @@ export default function RecipeFormScreen() {
 
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Chequeo rapido</Text>
-        <Text style={styles.summaryText}>Base total: {stats.basePercent}%</Text>
+        <Text style={styles.summaryText}>Harina base: {stats.basePercent}%</Text>
         <Text style={styles.summaryText}>Hidratacion: {stats.hydration}%</Text>
         <Text style={styles.summaryText}>Peso total: {stats.doughWeight} g</Text>
       </View>
@@ -164,7 +164,7 @@ export default function RecipeFormScreen() {
 
       <Pressable onPress={saveRecipe} style={styles.primaryButton}>
         <Text style={styles.primaryButtonText}>
-          {isEditing ? "Guardar cambios" : "Guardar receta"}
+          {isEditing ? "Guardar cambios" : "Guardar formula"}
         </Text>
       </Pressable>
     </Screen>

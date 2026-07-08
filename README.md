@@ -1,6 +1,6 @@
 # CENTENO
 
-Base inicial para una app de recetas de panaderia inspirada en Doughlator.
+Base inicial para una app de formulas panaderas inspirada en Doughlator.
 
 ## Stack elegido
 
@@ -11,9 +11,9 @@ Base inicial para una app de recetas de panaderia inspirada en Doughlator.
 
 ## Pantallas incluidas
 
-- `Home / Lista de recetas`
-- `Detalle de receta`
-- `Formulario de receta`
+- `Home / Lista de formulas`
+- `Detalle de formula`
+- `Formulario de formula`
 - `Vista de formula / recalculo`
 - `Calculadora simple de escalado`
 
