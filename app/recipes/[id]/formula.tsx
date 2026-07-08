@@ -1,29 +1,74 @@
 import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
-import { getRecipeSummary, getScaledDoughWeight, scaleIngredients } from "@/lib/baker";
+import {
+  getDoughWeight,
+  getHydrationPercentage,
+  getMoistureIndex,
+  getTotalFats,
+  getTotalFlour,
+  getRecipeSummary,
+  scaleByDoughWeight,
+  scaleByTotalFlour,
+  scaleByYield
+} from "@/lib/baker";
 import { ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
+
+type ScaleMode = "flour" | "dough" | "yield";
 
 export default function RecipeFormulaScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const { getRecipeById } = useRecipes();
   const recipe = getRecipeById(params.id);
   const summary = recipe ? getRecipeSummary(recipe) : null;
+  const [mode, setMode] = useState<ScaleMode>("flour");
   const [flourTarget, setFlourTarget] = useState(
     summary ? String(summary.baseQuantity) : "1000"
   );
+  const [doughTarget, setDoughTarget] = useState(
+    summary ? String(summary.doughWeight) : "1800"
+  );
+  const [pieceCount, setPieceCount] = useState("10");
+  const [pieceWeight, setPieceWeight] = useState("350");
 
   const scaledIngredients = useMemo(() => {
     if (!recipe) {
       return [];
     }
 
-    return scaleIngredients(recipe.ingredients, Number(flourTarget) || summary?.baseQuantity || 0);
-  }, [flourTarget, recipe, summary?.baseQuantity]);
+    if (mode === "dough") {
+      return scaleByDoughWeight(
+        recipe.ingredients,
+        Number(doughTarget) || summary?.doughWeight || 0
+      );
+    }
+
+    if (mode === "yield") {
+      return scaleByYield(
+        recipe.ingredients,
+        Number(pieceCount) || 0,
+        Number(pieceWeight) || 0
+      );
+    }
+
+    return scaleByTotalFlour(
+      recipe.ingredients,
+      Number(flourTarget) || summary?.baseQuantity || 0
+    );
+  }, [
+    doughTarget,
+    flourTarget,
+    mode,
+    pieceCount,
+    pieceWeight,
+    recipe,
+    summary?.baseQuantity,
+    summary?.doughWeight
+  ]);
 
   if (!recipe || !summary) {
     return (
@@ -32,6 +77,14 @@ export default function RecipeFormulaScreen() {
       </Screen>
     );
   }
+
+  const scaledSummary = {
+    flour: getTotalFlour(scaledIngredients),
+    doughWeight: getDoughWeight(scaledIngredients),
+    hydration: getHydrationPercentage(scaledIngredients),
+    moistureIndex: getMoistureIndex(scaledIngredients),
+    fats: getTotalFats(scaledIngredients)
+  };
 
   return (
     <Screen
@@ -48,34 +101,97 @@ export default function RecipeFormulaScreen() {
       <View style={styles.metrics}>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Harina total</Text>
-          <Text style={styles.metricValue}>{summary.baseQuantity} g</Text>
+          <Text style={styles.metricValue}>{scaledSummary.flour} g</Text>
         </View>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Hidratacion</Text>
-          <Text style={styles.metricValue}>{summary.hydration}%</Text>
+          <Text style={styles.metricValue}>{scaledSummary.hydration}%</Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Indice de humedad</Text>
+          <Text style={styles.metricValue}>{scaledSummary.moistureIndex}%</Text>
+        </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Grasas</Text>
+          <Text style={styles.metricValue}>{scaledSummary.fats} g</Text>
         </View>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Peso total</Text>
-          <Text style={styles.metricValue}>
-            {getScaledDoughWeight(recipe.ingredients, Number(flourTarget) || 0)} g
-          </Text>
-        </View>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Ingredientes</Text>
-          <Text style={styles.metricValue}>{summary.ingredientCount}</Text>
+          <Text style={styles.metricValue}>{scaledSummary.doughWeight} g</Text>
         </View>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Harina total objetivo</Text>
-        <TextInput
-          keyboardType="decimal-pad"
-          onChangeText={setFlourTarget}
-          placeholder="Harina total"
-          placeholderTextColor={theme.colors.textMuted}
-          style={styles.input}
-          value={flourTarget}
-        />
+        <Text style={styles.sectionTitle}>Modo de recálculo</Text>
+        <View style={styles.modeRow}>
+          <Pressable
+            onPress={() => setMode("flour")}
+            style={[styles.modeChip, mode === "flour" && styles.modeChipActive]}
+          >
+            <Text style={[styles.modeChipText, mode === "flour" && styles.modeChipTextActive]}>
+              Por harina
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode("dough")}
+            style={[styles.modeChip, mode === "dough" && styles.modeChipActive]}
+          >
+            <Text style={[styles.modeChipText, mode === "dough" && styles.modeChipTextActive]}>
+              Por masa
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode("yield")}
+            style={[styles.modeChip, mode === "yield" && styles.modeChipActive]}
+          >
+            <Text style={[styles.modeChipText, mode === "yield" && styles.modeChipTextActive]}>
+              Por piezas
+            </Text>
+          </Pressable>
+        </View>
+
+        {mode === "flour" ? (
+          <TextInput
+            keyboardType="decimal-pad"
+            onChangeText={setFlourTarget}
+            placeholder="Harina total"
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.input}
+            value={flourTarget}
+          />
+        ) : null}
+
+        {mode === "dough" ? (
+          <TextInput
+            keyboardType="decimal-pad"
+            onChangeText={setDoughTarget}
+            placeholder="Peso total de masa"
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.input}
+            value={doughTarget}
+          />
+        ) : null}
+
+        {mode === "yield" ? (
+          <View style={styles.yieldRow}>
+            <TextInput
+              keyboardType="number-pad"
+              onChangeText={setPieceCount}
+              placeholder="Piezas"
+              placeholderTextColor={theme.colors.textMuted}
+              style={[styles.input, styles.yieldInput]}
+              value={pieceCount}
+            />
+            <TextInput
+              keyboardType="decimal-pad"
+              onChangeText={setPieceWeight}
+              placeholder="Peso por pieza"
+              placeholderTextColor={theme.colors.textMuted}
+              style={[styles.input, styles.yieldInput]}
+              value={pieceWeight}
+            />
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.card}>
@@ -101,7 +217,7 @@ export default function RecipeFormulaScreen() {
           </View>
         ))}
         <Text style={styles.helperText}>
-          Futuro: esta base permite sumar recalculo por cantidad de piezas y peso por pieza sin cambiar la persistencia actual.
+          La formula mantiene hidratacion e indice de humedad, y cambia la escala segun el modo elegido.
         </Text>
       </View>
     </Screen>
@@ -160,6 +276,28 @@ const styles = StyleSheet.create({
     gap: theme.spacing.sm,
     padding: theme.spacing.lg
   },
+  modeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  modeChip: {
+    backgroundColor: "#F0E1CF",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  modeChipActive: {
+    backgroundColor: theme.colors.accent
+  },
+  modeChipText: {
+    color: theme.colors.accentDeep,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  modeChipTextActive: {
+    color: "#FFF6EF"
+  },
   sectionTitle: {
     color: theme.colors.text,
     fontSize: 18,
@@ -173,6 +311,13 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     minHeight: 50,
     paddingHorizontal: 14
+  },
+  yieldRow: {
+    flexDirection: "row",
+    gap: theme.spacing.sm
+  },
+  yieldInput: {
+    flex: 1
   },
   tableHeader: {
     borderBottomColor: theme.colors.border,

@@ -67,6 +67,44 @@ export function scaleIngredients(
   }));
 }
 
+export function scaleByTotalFlour(
+  ingredients: RecipeIngredient[],
+  flourTarget: number
+) {
+  return scaleIngredients(ingredients, flourTarget);
+}
+
+export function scaleByDoughWeight(
+  ingredients: RecipeIngredient[],
+  doughWeightTarget: number
+) {
+  const currentDoughWeight = getDoughWeight(ingredients);
+
+  if (currentDoughWeight <= 0) {
+    return ingredients.map((ingredient) => ({
+      ...ingredient,
+      scaledQuantity: 0
+    }));
+  }
+
+  const factor = doughWeightTarget / currentDoughWeight;
+
+  return ingredients.map((ingredient) => ({
+    ...ingredient,
+    scaledQuantity: round(ingredient.quantity * factor)
+  }));
+}
+
+export function scaleByYield(
+  ingredients: RecipeIngredient[],
+  pieceCount: number,
+  pieceWeight: number
+) {
+  const doughWeightTarget = pieceCount * pieceWeight;
+
+  return scaleByDoughWeight(ingredients, doughWeightTarget);
+}
+
 export function getHydrationPercentage(ingredients: RecipeIngredient[]) {
   const basePercent = getBasePercent(ingredients);
   if (basePercent <= 0) {
