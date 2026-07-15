@@ -18,6 +18,8 @@ export type RecipeIngredient = {
   unit: IngredientUnit;
   role: IngredientRole;
   bakerPercentage: number;
+  linkedRecipeId?: string;
+  linkedRecipeName?: string;
 };
 
 export type Recipe = {
@@ -25,6 +27,7 @@ export type Recipe = {
   name: string;
   description?: string;
   notes?: string;
+  useAsPreferment?: boolean;
   ingredients: RecipeIngredient[];
   createdAt: string;
   updatedAt: string;
@@ -34,5 +37,6 @@ export type RecipeDraft = {
   name: string;
   description: string;
   notes: string;
+  useAsPreferment: boolean;
   ingredients: RecipeIngredient[];
 };

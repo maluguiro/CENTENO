@@ -1,118 +1,109 @@
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { RecipeCard } from "@/components/RecipeCard";
+import { FormulaListItem } from "@/components/FormulaListItem";
 import { Screen } from "@/components/Screen";
 import { theme } from "@/theme";
 import { useRecipes } from "@/store/RecipesProvider";
 
 export default function HomeScreen() {
   const { recipes } = useRecipes();
+  const [query, setQuery] = useState("");
+
+  const filteredRecipes = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return recipes;
+    }
+
+    return recipes.filter((recipe) => {
+      return [recipe.name, recipe.description, recipe.notes]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery);
+    });
+  }, [query, recipes]);
 
   return (
     <Screen
       header={
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>CENTENO</Text>
-          <Text style={styles.title}>Formulas panaderas con porcentaje panadero</Text>
-          <Text style={styles.subtitle}>
-            Base simple para guardar formulas, recalcular harina y revisar hidratacion.
-          </Text>
+        <View style={styles.header}>
+          <Text style={styles.brand}>CENTENO</Text>
         </View>
       }
+      overlay={
+        <Pressable onPress={() => router.push("/recipes/form")} style={styles.fab}>
+          <Text style={styles.fabText}>Nueva receta</Text>
+        </Pressable>
+      }
     >
-      <View style={styles.actions}>
-        <Pressable onPress={() => router.push("/recipes/form")} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Nueva formula</Text>
-        </Pressable>
-        <Pressable onPress={() => router.push("/calculator")} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Calculadora</Text>
-        </Pressable>
-      </View>
+      <TextInput
+        onChangeText={setQuery}
+        placeholder="Buscar receta..."
+        placeholderTextColor={theme.colors.textMuted}
+        style={styles.search}
+        value={query}
+      />
 
-      <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>Tus formulas</Text>
-        <Text style={styles.listMeta}>{recipes.length} guardadas</Text>
+      <View style={styles.list}>
+        {filteredRecipes.map((recipe) => (
+          <FormulaListItem
+            key={recipe.id}
+            onPress={() => router.push(`/recipes/${recipe.id}`)}
+            recipe={recipe}
+          />
+        ))}
+        {!filteredRecipes.length ? (
+          <Text style={styles.empty}>No hay formulas para mostrar.</Text>
+        ) : null}
       </View>
-
-      {recipes.map((recipe) => (
-        <RecipeCard
-          key={recipe.id}
-          onPress={() => router.push(`/recipes/${recipe.id}`)}
-          recipe={recipe}
-        />
-      ))}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    gap: theme.spacing.sm,
+  header: {
     paddingBottom: theme.spacing.md
   },
-  eyebrow: {
-    color: theme.colors.accentDeep,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 2
+  brand: {
+    color: "#F8F5F1",
+    fontSize: 26,
+    fontWeight: "900",
+    letterSpacing: 1.5
   },
-  title: {
+  search: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
     color: theme.colors.text,
-    fontSize: 34,
-    fontWeight: "800",
-    lineHeight: 38,
-    maxWidth: 300
+    minHeight: 48,
+    marginTop: theme.spacing.xs,
+    paddingHorizontal: 14
   },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
-    maxWidth: 320
+  list: {
+    paddingBottom: theme.spacing.xxl
   },
-  actions: {
-    flexDirection: "row",
-    gap: theme.spacing.sm
+  empty: {
+    color: theme.colors.textSoft,
+    fontSize: 14,
+    paddingVertical: theme.spacing.lg
   },
-  primaryButton: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: 18,
-    flex: 1,
-    paddingHorizontal: 18,
+  fab: {
+    alignItems: "center",
+    backgroundColor: theme.colors.accentDeep,
+    borderColor: theme.colors.accent,
+    borderWidth: 1,
+    borderRadius: 999,
+    minWidth: 172,
+    paddingHorizontal: 24,
     paddingVertical: 16
   },
-  primaryButtonText: {
-    color: "#FFF6EF",
+  fabText: {
+    color: "#F8F5F1",
     fontSize: 15,
-    fontWeight: "800",
-    textAlign: "center"
-  },
-  secondaryButton: {
-    backgroundColor: "#F0E1CF",
-    borderRadius: 18,
-    flex: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 16
-  },
-  secondaryButtonText: {
-    color: theme.colors.accentDeep,
-    fontSize: 15,
-    fontWeight: "800",
-    textAlign: "center"
-  },
-  listHeader: {
-    alignItems: "baseline",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: theme.spacing.sm
-  },
-  listTitle: {
-    color: theme.colors.text,
-    fontSize: 22,
-    fontWeight: "700"
-  },
-  listMeta: {
-    color: theme.colors.textMuted,
-    fontSize: 13
+    fontWeight: "800"
   }
 });

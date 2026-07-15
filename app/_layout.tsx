@@ -6,7 +6,7 @@ import { RecipesProvider } from "@/store/RecipesProvider";
 export default function RootLayout() {
   return (
     <RecipesProvider>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <Stack
         screenOptions={{
           headerShown: false
@@ -15,4 +15,3 @@ export default function RootLayout() {
     </RecipesProvider>
   );
 }
-

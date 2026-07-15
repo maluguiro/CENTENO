@@ -122,7 +122,7 @@ export function IngredientEditor({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
+    borderColor: theme.colors.borderStrong,
     borderRadius: theme.radius.md,
     borderWidth: 1,
     gap: theme.spacing.sm,
@@ -137,8 +137,8 @@ const styles = StyleSheet.create({
     flex: 1
   },
   input: {
-    backgroundColor: "#FFFDF8",
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
     borderRadius: 14,
     borderWidth: 1,
     color: theme.colors.text,
@@ -146,7 +146,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14
   },
   removeButton: {
-    backgroundColor: "#F1D3C8",
+    backgroundColor: "#F3E2DA",
+    borderColor: "#D8B6AA",
+    borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 12
@@ -163,6 +165,8 @@ const styles = StyleSheet.create({
   },
   unitChip: {
     backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 8
@@ -176,7 +180,7 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   unitTextActive: {
-    color: "#FFF6EF"
+    color: "#F8F5F1"
   },
   roleGroup: {
     flexDirection: "row",
@@ -185,6 +189,8 @@ const styles = StyleSheet.create({
   },
   roleChip: {
     backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 8
@@ -198,6 +204,6 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   roleTextActive: {
-    color: "#FFF6EF"
+    color: "#F8F5F1"
   }
 });

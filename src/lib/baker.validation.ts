@@ -1,19 +1,33 @@
-import assert from "node:assert/strict";
-import { pathToFileURL } from "node:url";
-
 import {
   getDoughWeight,
   getHydrationPercentage,
   getMoistureIndex,
+  getPrefermentBreakdown,
   getScaledDoughWeight,
   getTotalFats,
   getTotalFlour,
+  getRecipeComposition,
   scaleByDoughWeight,
   scaleByTotalFlour,
   scaleByYield,
   scaleIngredients
 } from "./baker";
-import type { RecipeIngredient } from "../types/recipe";
+import type { Recipe, RecipeIngredient } from "../types/recipe";
+
+function assertEqual(actual: unknown, expected: unknown) {
+  if (actual !== expected) {
+    throw new Error(`Expected ${String(expected)} but received ${String(actual)}`);
+  }
+}
+
+function assertDeepEqual(actual: unknown, expected: unknown) {
+  const actualSerialized = JSON.stringify(actual);
+  const expectedSerialized = JSON.stringify(expected);
+
+  if (actualSerialized !== expectedSerialized) {
+    throw new Error(`Expected ${expectedSerialized} but received ${actualSerialized}`);
+  }
+}
 
 function ingredient(
   id: string,
@@ -40,9 +54,9 @@ function runSimpleFormulaCase() {
     ingredient("yeast", "Levadura", 10, "yeast", 1)
   ];
 
-  assert.equal(getTotalFlour(ingredients), 1000);
-  assert.equal(getHydrationPercentage(ingredients), 70);
-  assert.equal(getDoughWeight(ingredients), 1730);
+  assertEqual(getTotalFlour(ingredients), 1000);
+  assertEqual(getHydrationPercentage(ingredients), 70);
+  assertEqual(getDoughWeight(ingredients), 1730);
 }
 
 function runFatFormulaCase() {
@@ -53,10 +67,10 @@ function runFatFormulaCase() {
     ingredient("salt", "Sal", 20, "salt", 2)
   ];
 
-  assert.equal(getHydrationPercentage(ingredients), 75);
-  assert.equal(getTotalFats(ingredients), 80);
-  assert.equal(getDoughWeight(ingredients), 1850);
-  assert.equal(getMoistureIndex(ingredients), 83);
+  assertEqual(getHydrationPercentage(ingredients), 75);
+  assertEqual(getTotalFats(ingredients), 80);
+  assertEqual(getDoughWeight(ingredients), 1850);
+  assertEqual(getMoistureIndex(ingredients), 83);
 }
 
 function runNoFlourCase() {
@@ -65,10 +79,10 @@ function runNoFlourCase() {
     ingredient("salt", "Sal", 10, "salt", 2)
   ];
 
-  assert.equal(getTotalFlour(ingredients), 0);
-  assert.equal(getHydrationPercentage(ingredients), 0);
-  assert.equal(getMoistureIndex(ingredients), 0);
-  assert.deepEqual(
+  assertEqual(getTotalFlour(ingredients), 0);
+  assertEqual(getHydrationPercentage(ingredients), 0);
+  assertEqual(getMoistureIndex(ingredients), 0);
+  assertDeepEqual(
     scaleIngredients(ingredients, 1000).map((ingredient) => ingredient.scaledQuantity),
     [0, 0]
   );
@@ -84,11 +98,11 @@ function runScalingCase() {
 
   const scaled = scaleIngredients(ingredients, 2000);
 
-  assert.deepEqual(
+  assertDeepEqual(
     scaled.map((ingredient) => ingredient.scaledQuantity),
     [2000, 1400, 40, 20]
   );
-  assert.equal(getScaledDoughWeight(ingredients, 2000), 3460);
+  assertEqual(getScaledDoughWeight(ingredients, 2000), 3460);
 }
 
 function runScaleByTotalFlourCase() {
@@ -100,7 +114,7 @@ function runScaleByTotalFlourCase() {
 
   const scaled = scaleByTotalFlour(ingredients, 1500);
 
-  assert.deepEqual(
+  assertDeepEqual(
     scaled.map((ingredient) => ingredient.scaledQuantity),
     [1500, 1050, 30]
   );
@@ -116,7 +130,7 @@ function runScaleByDoughWeightCase() {
 
   const scaled = scaleByDoughWeight(ingredients, 3460);
 
-  assert.deepEqual(
+  assertDeepEqual(
     scaled.map((ingredient) => ingredient.scaledQuantity),
     [2000, 1400, 40, 20]
   );
@@ -132,10 +146,54 @@ function runScaleByYieldCase() {
 
   const scaled = scaleByYield(ingredients, 10, 346);
 
-  assert.deepEqual(
+  assertDeepEqual(
     scaled.map((ingredient) => ingredient.scaledQuantity),
     [2000, 1400, 40, 20]
   );
+}
+
+function runPrefermentBreakdownCase() {
+  const poolish: Recipe = {
+    id: "poolish",
+    name: "Poolish focaccia",
+    description: "",
+    notes: "",
+    useAsPreferment: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ingredients: [
+      ingredient("poolish-flour", "Harina", 500, "flour", 100),
+      ingredient("poolish-water", "Agua", 500, "water", 100)
+    ]
+  };
+
+  const focacciaPreferment = {
+    ...ingredient("pref", "Poolish focaccia", 800, "preferment", 80),
+    linkedRecipeId: poolish.id,
+    linkedRecipeName: poolish.name
+  };
+
+  const lookup = (recipeId: string) => (recipeId === poolish.id ? poolish : undefined);
+
+  assertDeepEqual(getRecipeComposition(poolish, lookup), {
+    flour: 500,
+    liquids: 500,
+    doughWeight: 1000,
+    hydration: 100
+  });
+
+  assertDeepEqual(getPrefermentBreakdown(focacciaPreferment, lookup, "focaccia"), {
+    status: "resolved",
+    linkedRecipeId: "poolish",
+    linkedRecipeName: "Poolish focaccia",
+    originalFlour: 500,
+    originalLiquids: 500,
+    originalHydration: 100,
+    originalWeight: 1000,
+    contributedFlour: 400,
+    contributedLiquids: 400,
+    contributedWeight: 800
+  });
 }
 
 export function runBakerValidation() {
@@ -146,10 +204,9 @@ export function runBakerValidation() {
   runScaleByTotalFlourCase();
   runScaleByDoughWeightCase();
   runScaleByYieldCase();
+  runPrefermentBreakdownCase();
 
   return "baker validation passed";
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  console.log(runBakerValidation());
-}
+console.log(runBakerValidation());

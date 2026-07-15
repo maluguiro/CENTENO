@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { IngredientEditor } from "@/components/IngredientEditor";
+import { MetricChip } from "@/components/MetricChip";
 import { Screen } from "@/components/Screen";
 import { getBasePercent, getDoughWeight, getHydrationPercent } from "@/lib/baker";
 import { useRecipes } from "@/store/RecipesProvider";
@@ -28,6 +29,7 @@ export default function RecipeFormScreen() {
   const [name, setName] = useState(existingRecipe?.name ?? "");
   const [description, setDescription] = useState(existingRecipe?.description ?? "");
   const [notes, setNotes] = useState(existingRecipe?.notes ?? "");
+  const [useAsPreferment, setUseAsPreferment] = useState(existingRecipe?.useAsPreferment ?? false);
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>(
     existingRecipe?.ingredients ?? [emptyIngredient(), emptyIngredient()]
   );
@@ -80,20 +82,18 @@ export default function RecipeFormScreen() {
       return;
     }
 
+    const draft = {
+      name,
+      description,
+      notes,
+      useAsPreferment,
+      ingredients: normalizedIngredients
+    };
+
     if (existingRecipe) {
-      updateRecipe(existingRecipe.id, {
-        name,
-        description,
-        notes,
-        ingredients: normalizedIngredients
-      });
+      updateRecipe(existingRecipe.id, draft);
     } else {
-      createRecipe({
-        name,
-        description,
-        notes,
-        ingredients: normalizedIngredients
-      });
+      createRecipe(draft);
     }
 
     router.replace("/");
@@ -101,19 +101,21 @@ export default function RecipeFormScreen() {
 
   return (
     <Screen
+      keyboardAware
       header={
         <View style={styles.header}>
           <Text style={styles.eyebrow}>{isEditing ? "EDITAR" : "NUEVA"}</Text>
-          <Text style={styles.title}>
-            {isEditing ? "Editar formula" : "Crear formula"}
-          </Text>
-          <Text style={styles.subtitle}>
-            Carga la formula, define la harina base y deja todo listo para recalcular.
-          </Text>
+          <Text style={styles.title}>{isEditing ? "Editar formula" : "Crear formula"}</Text>
         </View>
       }
     >
-      <View style={styles.card}>
+      <View style={styles.metrics}>
+        <MetricChip label="Harina base" value={`${stats.basePercent}%`} />
+        <MetricChip label="Hidratacion" value={`${stats.hydration}%`} />
+        <MetricChip label="Peso total" value={`${stats.doughWeight} g`} />
+      </View>
+
+      <View style={styles.section}>
         <TextInput
           onChangeText={setName}
           placeholder="Nombre de la formula"
@@ -124,43 +126,57 @@ export default function RecipeFormScreen() {
         <TextInput
           multiline
           onChangeText={setDescription}
-          placeholder="Descripcion opcional"
+          placeholder="Descripcion"
           placeholderTextColor={theme.colors.textMuted}
           style={[styles.input, styles.textArea]}
           value={description}
         />
+        <View style={styles.switchRow}>
+          <View style={styles.switchCopy}>
+            <Text style={styles.switchTitle}>Usar como prefermento</Text>
+            <Text style={styles.switchHint}>
+              Permite elegir esta formula dentro de otra desde "Agregar prefermento".
+            </Text>
+          </View>
+          <Switch
+            onValueChange={setUseAsPreferment}
+            trackColor={{ false: theme.colors.surfaceMuted, true: "#B7C9CE" }}
+            value={useAsPreferment}
+          />
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.inlineHeader}>
+          <Text style={styles.sectionTitle}>Ingredientes</Text>
+          <Pressable
+            onPress={() => setIngredients((current) => [...current, emptyIngredient()])}
+            style={styles.inlineButton}
+          >
+            <Text style={styles.inlineButtonText}>Agregar</Text>
+          </Pressable>
+        </View>
+        {ingredients.map((ingredient, index) => (
+          <IngredientEditor
+            ingredient={ingredient}
+            key={ingredient.id}
+            onChange={(nextIngredient) => updateIngredient(index, nextIngredient)}
+            onRemove={() => removeIngredient(index)}
+          />
+        ))}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Notas</Text>
         <TextInput
           multiline
           onChangeText={setNotes}
-          placeholder="Notas"
+          placeholder="Notas de trabajo"
           placeholderTextColor={theme.colors.textMuted}
-          style={[styles.input, styles.textArea]}
+          style={[styles.input, styles.notesArea]}
           value={notes}
         />
       </View>
-
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Chequeo rapido</Text>
-        <Text style={styles.summaryText}>Harina base: {stats.basePercent}%</Text>
-        <Text style={styles.summaryText}>Hidratacion: {stats.hydration}%</Text>
-        <Text style={styles.summaryText}>Peso total: {stats.doughWeight} g</Text>
-      </View>
-
-      {ingredients.map((ingredient, index) => (
-        <IngredientEditor
-          ingredient={ingredient}
-          key={ingredient.id}
-          onChange={(nextIngredient) => updateIngredient(index, nextIngredient)}
-          onRemove={() => removeIngredient(index)}
-        />
-      ))}
-
-      <Pressable
-        onPress={() => setIngredients((current) => [...current, emptyIngredient()])}
-        style={styles.secondaryButton}
-      >
-        <Text style={styles.secondaryButtonText}>Agregar ingrediente</Text>
-      </Pressable>
 
       <Pressable onPress={saveRecipe} style={styles.primaryButton}>
         <Text style={styles.primaryButtonText}>
@@ -173,86 +189,105 @@ export default function RecipeFormScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    gap: theme.spacing.sm
+    gap: 6,
+    paddingBottom: theme.spacing.sm
   },
   eyebrow: {
-    color: theme.colors.accentDeep,
+    color: "#D9CEC2",
     fontSize: 12,
     fontWeight: "800",
     letterSpacing: 2
   },
   title: {
-    color: theme.colors.text,
-    fontSize: 30,
+    color: "#F8F5F1",
+    fontSize: theme.typography.display,
     fontWeight: "800"
   },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
-    maxWidth: 320
+  metrics: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.sm
   },
-  card: {
+  section: {
+    gap: theme.spacing.sm
+  },
+  sectionTitle: {
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  inlineHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  inlineButton: {
     backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: 999,
     borderWidth: 1,
-    gap: theme.spacing.sm,
-    padding: theme.spacing.lg
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  inlineButtonText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "700"
   },
   input: {
-    backgroundColor: "#FFFDF8",
-    borderColor: theme.colors.border,
-    borderRadius: 16,
+    backgroundColor: theme.colors.surfaceElevated,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.radius.sm,
     borderWidth: 1,
     color: theme.colors.text,
-    minHeight: 50,
+    minHeight: 48,
     paddingHorizontal: 14,
     paddingVertical: 12
   },
   textArea: {
-    minHeight: 96,
+    minHeight: 80,
     textAlignVertical: "top"
   },
-  summaryCard: {
-    backgroundColor: "#F0E1CF",
-    borderRadius: theme.radius.md,
-    gap: 6,
-    padding: theme.spacing.md
+  notesArea: {
+    minHeight: 120,
+    textAlignVertical: "top"
   },
-  summaryTitle: {
-    color: theme.colors.accentDeep,
-    fontSize: 16,
-    fontWeight: "800"
-  },
-  summaryText: {
-    color: theme.colors.text,
-    fontSize: 14
-  },
-  secondaryButton: {
+  switchRow: {
+    alignItems: "center",
     backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
-    borderRadius: 18,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.radius.sm,
     borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 16
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12
   },
-  secondaryButtonText: {
+  switchCopy: {
+    flex: 1,
+    gap: 4
+  },
+  switchTitle: {
     color: theme.colors.text,
-    fontSize: 15,
-    fontWeight: "700",
-    textAlign: "center"
+    fontSize: 14,
+    fontWeight: "700"
+  },
+  switchHint: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18
   },
   primaryButton: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: 18,
+    alignItems: "center",
+    backgroundColor: theme.colors.accentDeep,
+    borderRadius: 999,
     paddingHorizontal: 18,
     paddingVertical: 16
   },
   primaryButtonText: {
-    color: "#FFF6EF",
+    color: "#F8F5F1",
     fontSize: 15,
-    fontWeight: "800",
-    textAlign: "center"
+    fontWeight: "800"
   }
 });

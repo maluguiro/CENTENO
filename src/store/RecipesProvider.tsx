@@ -50,6 +50,7 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
         name: action.payload.name.trim(),
         description: action.payload.description.trim(),
         notes: action.payload.notes.trim(),
+        useAsPreferment: action.payload.useAsPreferment,
         ingredients: action.payload.ingredients,
         createdAt: timestamp,
         updatedAt: timestamp
@@ -66,6 +67,7 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
                 name: action.payload.draft.name.trim(),
                 description: action.payload.draft.description.trim(),
                 notes: action.payload.draft.notes.trim(),
+                useAsPreferment: action.payload.draft.useAsPreferment,
                 ingredients: action.payload.draft.ingredients,
                 updatedAt: new Date().toISOString()
               }
