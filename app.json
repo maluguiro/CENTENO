@@ -5,6 +5,7 @@
     "scheme": "centeno",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/branding/centeno-app-icon.png",
     "plugins": [
       "expo-router"
     ],
@@ -19,7 +20,11 @@
     },
     "owner": "maleguiro",
     "android": {
-      "package": "com.maleguiro.centeno"
+      "package": "com.maleguiro.centeno",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/branding/centeno-adaptive-icon.png",
+        "backgroundColor": "#F3EFE7"
+      }
     }
   }
 }

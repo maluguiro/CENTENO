@@ -1,6 +1,8 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
+  Image,
+  ImageBackground,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -95,7 +97,15 @@ export default function HomeScreen() {
     <Screen
       header={
         <View style={styles.header}>
-          <Text style={styles.brand}>CENTENO</Text>
+          <ImageBackground
+            imageStyle={styles.brandPatternImage}
+            resizeMode="repeat"
+            source={require("../assets/branding/bread-pattern.png")}
+            style={styles.brandCard}
+          >
+            <View style={styles.brandOverlay} />
+            <Text style={styles.brand}>CENTENO</Text>
+          </ImageBackground>
         </View>
       }
       overlay={
@@ -104,6 +114,12 @@ export default function HomeScreen() {
         </Pressable>
       }
     >
+      <Image
+        resizeMode="repeat"
+        source={require("../assets/branding/bread-pattern.png")}
+        style={styles.backgroundPattern}
+      />
+
       <TextInput
         onChangeText={setQuery}
         placeholder="Buscar receta..."
@@ -179,11 +195,39 @@ const styles = StyleSheet.create({
   header: {
     paddingBottom: theme.spacing.md
   },
+  brandCard: {
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    minHeight: 88,
+    overflow: "hidden",
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md
+  },
+  brandPatternImage: {
+    opacity: 0.11
+  },
+  brandOverlay: {
+    backgroundColor: "rgba(90, 74, 63, 0.88)",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
   brand: {
     color: "#F8F5F1",
     fontSize: 26,
     fontWeight: "900",
     letterSpacing: 1.5
+  },
+  backgroundPattern: {
+    bottom: 0,
+    left: 0,
+    opacity: 0.05,
+    position: "absolute",
+    right: 0,
+    top: 0
   },
   search: {
     backgroundColor: theme.colors.surface,
