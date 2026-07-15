@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { PrefermentBreakdown } from "@/lib/baker";
-import { ingredientRoleLabels } from "@/lib/ingredientLabels";
+import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { RoleMarker } from "@/components/RoleMarker";
 import { theme } from "@/theme";
 import type { RecipeIngredient } from "@/types/recipe";
@@ -14,6 +14,7 @@ type IngredientRowProps = {
 
 export function IngredientRow({ ingredient, onPress, prefermentBreakdown }: IngredientRowProps) {
   const isPreferment = ingredient.role === "preferment";
+  const roleAppearance = getIngredientRoleAppearance(ingredient.role);
 
   return (
     <Pressable onPress={onPress} style={styles.row}>
@@ -25,7 +26,11 @@ export function IngredientRow({ ingredient, onPress, prefermentBreakdown }: Ingr
           </Text>
         </View>
         <View style={styles.metaRow}>
-          <Text style={styles.metaText}>{ingredientRoleLabels[ingredient.role]}</Text>
+          <View style={[styles.roleChip, { backgroundColor: roleAppearance.background }]}>
+            <Text style={[styles.roleChipText, { color: roleAppearance.text }]}>
+              {ingredientRoleLabels[ingredient.role]}
+            </Text>
+          </View>
           <Text style={styles.metaText}>{ingredient.bakerPercentage}%</Text>
         </View>
         {isPreferment ? (
@@ -88,8 +93,18 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   metaRow: {
+    alignItems: "center",
     flexDirection: "row",
     gap: 10
+  },
+  roleChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4
+  },
+  roleChipText: {
+    fontSize: 11,
+    fontWeight: "700"
   },
   metaText: {
     color: theme.colors.textMuted,

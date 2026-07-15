@@ -41,6 +41,79 @@ export type PrefermentBreakdown =
 
 type RecipeLookup = (recipeId: string) => Recipe | undefined;
 
+export function parseDecimalInput(value: string) {
+  const normalized = value.trim().replace(",", ".");
+  const parsed = Number(normalized);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function formatDecimalInput(value: number) {
+  return Number.isFinite(value) ? String(value) : "";
+}
+
+export function getQuantityFromBakerPercentage(flourTotal: number, bakerPercentage: number) {
+  if (flourTotal <= 0 || bakerPercentage <= 0) {
+    return 0;
+  }
+
+  return round((flourTotal * bakerPercentage) / 100);
+}
+
+export function getBakerPercentageFromQuantity(quantity: number, flourTotal: number) {
+  if (flourTotal <= 0 || quantity <= 0) {
+    return 0;
+  }
+
+  return round((quantity / flourTotal) * 100);
+}
+
+export function normalizeIngredientsFromFlour(
+  ingredients: RecipeIngredient[],
+  flourTotal: number
+) {
+  return ingredients.map((ingredient) => ({
+    ...ingredient,
+    quantity: getQuantityFromBakerPercentage(flourTotal, ingredient.bakerPercentage)
+  }));
+}
+
+export function updateIngredientFromPercentage(
+  ingredients: RecipeIngredient[],
+  ingredientId: string,
+  bakerPercentage: number
+) {
+  const flourTotal = getTotalFlour(ingredients);
+
+  return ingredients.map((ingredient) =>
+    ingredient.id === ingredientId
+      ? {
+          ...ingredient,
+          bakerPercentage,
+          quantity: getQuantityFromBakerPercentage(flourTotal, bakerPercentage)
+        }
+      : ingredient
+  );
+}
+
+export function updateIngredientFromQuantity(
+  ingredients: RecipeIngredient[],
+  ingredientId: string,
+  quantity: number
+) {
+  const flourTotal = getTotalFlour(ingredients);
+
+  return ingredients.map((ingredient) =>
+    ingredient.id === ingredientId
+      ? {
+          ...ingredient,
+          quantity: round(quantity),
+          bakerPercentage: getBakerPercentageFromQuantity(quantity, flourTotal)
+        }
+      : ingredient
+  );
+}
+
 export function getBaseIngredients(ingredients: RecipeIngredient[]) {
   return ingredients.filter((ingredient) => flourRoles.includes(ingredient.role));
 }
@@ -87,9 +160,7 @@ export function scaleIngredients(
   ingredients: RecipeIngredient[],
   flourTarget: number
 ) {
-  const basePercent = getBasePercent(ingredients);
-
-  if (basePercent <= 0) {
+  if (flourTarget <= 0 || getTotalFlour(ingredients) <= 0) {
     return ingredients.map((ingredient) => ({
       ...ingredient,
       scaledQuantity: 0
@@ -98,7 +169,7 @@ export function scaleIngredients(
 
   return ingredients.map((ingredient) => ({
     ...ingredient,
-    scaledQuantity: round((flourTarget * ingredient.bakerPercentage) / basePercent)
+    scaledQuantity: getQuantityFromBakerPercentage(flourTarget, ingredient.bakerPercentage)
   }));
 }
 
@@ -141,16 +212,18 @@ export function scaleByYield(
 }
 
 export function getHydrationPercentage(ingredients: RecipeIngredient[]) {
-  const basePercent = getBasePercent(ingredients);
-  if (basePercent <= 0) {
+  const flourTotal = getTotalFlour(ingredients);
+  if (flourTotal <= 0) {
     return 0;
   }
 
-  const liquidPercent = ingredients
+  const liquidPercent = round(
+    ingredients
     .filter((ingredient) => liquidRoles.includes(ingredient.role))
-    .reduce((total, ingredient) => total + ingredient.bakerPercentage, 0);
+    .reduce((total, ingredient) => total + ingredient.bakerPercentage, 0)
+  );
 
-  return round((liquidPercent / basePercent) * 100);
+  return liquidPercent;
 }
 
 export function getHydrationPercent(ingredients: RecipeIngredient[]) {
@@ -158,16 +231,16 @@ export function getHydrationPercent(ingredients: RecipeIngredient[]) {
 }
 
 export function getMoistureIndex(ingredients: RecipeIngredient[]) {
-  const basePercent = getBasePercent(ingredients);
-  if (basePercent <= 0) {
+  const flourTotal = getTotalFlour(ingredients);
+  if (flourTotal <= 0) {
     return 0;
   }
 
-  const moisturePercent = ingredients
+  return round(
+    ingredients
     .filter((ingredient) => moistureRoles.includes(ingredient.role))
-    .reduce((total, ingredient) => total + ingredient.bakerPercentage, 0);
-
-  return round((moisturePercent / basePercent) * 100);
+    .reduce((total, ingredient) => total + ingredient.bakerPercentage, 0)
+  );
 }
 
 export function getDoughWeight(ingredients: RecipeIngredient[]) {
@@ -306,6 +379,37 @@ export function getScaledDoughWeight(
       0
     )
   );
+}
+
+export function applyScaleByTotalFlour(
+  ingredients: RecipeIngredient[],
+  flourTarget: number
+) {
+  return scaleByTotalFlour(ingredients, flourTarget).map((ingredient) => ({
+    ...ingredient,
+    quantity: ingredient.scaledQuantity
+  }));
+}
+
+export function applyScaleByDoughWeight(
+  ingredients: RecipeIngredient[],
+  doughWeightTarget: number
+) {
+  return scaleByDoughWeight(ingredients, doughWeightTarget).map((ingredient) => ({
+    ...ingredient,
+    quantity: ingredient.scaledQuantity
+  }));
+}
+
+export function applyScaleByYield(
+  ingredients: RecipeIngredient[],
+  pieceCount: number,
+  pieceWeight: number
+) {
+  return scaleByYield(ingredients, pieceCount, pieceWeight).map((ingredient) => ({
+    ...ingredient,
+    quantity: ingredient.scaledQuantity
+  }));
 }
 
 export function getRecipeSummary(recipe: Recipe) {

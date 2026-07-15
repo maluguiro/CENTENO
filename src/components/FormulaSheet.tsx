@@ -17,25 +17,29 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HydrationBar } from "@/components/HydrationBar";
 import { IngredientRow } from "@/components/IngredientRow";
 import {
-  getPrefermentBreakdown,
+  applyScaleByDoughWeight,
+  applyScaleByTotalFlour,
+  applyScaleByYield,
+  formatDecimalInput,
+  getBakerPercentageFromQuantity,
   getDoughWeight,
   getHydrationPercentage,
   getMoistureIndex,
+  getPrefermentBreakdown,
+  getQuantityFromBakerPercentage,
   getTotalFlour,
   getTotalLiquids,
-  scaleByDoughWeight,
-  scaleByTotalFlour,
-  scaleByYield
+  parseDecimalInput
 } from "@/lib/baker";
-import { ingredientRoleLabels } from "@/lib/ingredientLabels";
+import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
-import type { IngredientRole, IngredientUnit, Recipe, RecipeIngredient } from "@/types/recipe";
+import type { IngredientRole, IngredientUnit, Recipe, RecipeDraft, RecipeIngredient } from "@/types/recipe";
 
 type ScaleMode = "flour" | "dough" | "yield";
 type PrefermentMode = "grams" | "percent";
+type IngredientField = "quantity" | "percentage" | null;
 
-const units: IngredientUnit[] = ["g", "kg", "ml", "l", "unit"];
 const roles: IngredientRole[] = [
   "flour",
   "water",
@@ -48,9 +52,68 @@ const roles: IngredientRole[] = [
   "other"
 ];
 
+const scaleCopy: Record<ScaleMode, string> = {
+  flour:
+    "Usa esta opcion cuando queres definir cuanta harina total vas a usar. CENTENO recalcula todos los ingredientes segun sus porcentajes panaderos.",
+  dough:
+    "Usa esta opcion cuando queres obtener una cantidad final de masa. CENTENO escala toda la receta para aproximarse a ese peso total.",
+  yield:
+    "Usa esta opcion cuando queres producir una cantidad especifica de piezas. Ejemplo: 12 piezas de 180 g = 2160 g de masa total. CENTENO escala la receta a ese objetivo."
+};
+
+const ingredientFieldCopy = {
+  amount: { label: "Cantidad", placeholder: "500", unit: "g" },
+  percentage: { label: "Porcentaje panadero", placeholder: "100", unit: "%" }
+};
+
 type FormulaSheetProps = {
   recipe: Recipe;
 };
+
+type IngredientDraftState = {
+  id: string;
+  name: string;
+  unit: IngredientUnit;
+  role: IngredientRole;
+  quantityInput: string;
+  percentageInput: string;
+  linkedRecipeId?: string;
+  linkedRecipeName?: string;
+};
+
+function emptyIngredient(role: IngredientRole = "other"): IngredientDraftState {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: "",
+    unit: "g",
+    role,
+    quantityInput: "",
+    percentageInput: ""
+  };
+}
+
+function toDraftIngredient(ingredient: RecipeIngredient): IngredientDraftState {
+  return {
+    id: ingredient.id,
+    name: ingredient.name,
+    unit: ingredient.unit,
+    role: ingredient.role,
+    quantityInput: formatDecimalInput(ingredient.quantity),
+    percentageInput: formatDecimalInput(ingredient.bakerPercentage),
+    linkedRecipeId: ingredient.linkedRecipeId,
+    linkedRecipeName: ingredient.linkedRecipeName
+  };
+}
+
+function getRecipeDraft(recipe: Recipe, ingredients: RecipeIngredient[], notes?: string): RecipeDraft {
+  return {
+    name: recipe.name,
+    description: recipe.description ?? "",
+    notes: notes ?? recipe.notes ?? "",
+    useAsPreferment: recipe.useAsPreferment ?? false,
+    ingredients
+  };
+}
 
 export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const insets = useSafeAreaInsets();
@@ -61,54 +124,58 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [ingredientVisible, setIngredientVisible] = useState(false);
   const [prefermentVisible, setPrefermentVisible] = useState(false);
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
+  const [ingredientDraft, setIngredientDraft] = useState<IngredientDraftState>(emptyIngredient());
+  const [lastEditedField, setLastEditedField] = useState<IngredientField>(null);
+  const [notesDraft, setNotesDraft] = useState(recipe.notes ?? "");
   const [mode, setMode] = useState<ScaleMode>("flour");
-  const [flourTarget, setFlourTarget] = useState(String(getTotalFlour(recipe.ingredients)));
-  const [doughTarget, setDoughTarget] = useState(String(getDoughWeight(recipe.ingredients)));
-  const [pieceCount, setPieceCount] = useState("10");
-  const [pieceWeight, setPieceWeight] = useState("350");
-  const [draftIngredient, setDraftIngredient] = useState<RecipeIngredient>(emptyIngredient());
+  const [scaleHelp, setScaleHelp] = useState<ScaleMode | null>(null);
+  const [flourTargetInput, setFlourTargetInput] = useState(
+    formatDecimalInput(getTotalFlour(recipe.ingredients))
+  );
+  const [doughTargetInput, setDoughTargetInput] = useState(
+    formatDecimalInput(getDoughWeight(recipe.ingredients))
+  );
+  const [pieceCountInput, setPieceCountInput] = useState("10");
+  const [pieceWeightInput, setPieceWeightInput] = useState("200");
   const [selectedPrefermentId, setSelectedPrefermentId] = useState<string | null>(null);
   const [prefermentMode, setPrefermentMode] = useState<PrefermentMode>("grams");
-  const [prefermentQuantity, setPrefermentQuantity] = useState("");
+  const [prefermentQuantityInput, setPrefermentQuantityInput] = useState("");
 
-  const prefermentRecipes = useMemo(() => {
-    return recipes.filter((item) => item.id !== recipe.id && item.useAsPreferment);
-  }, [recipe.id, recipes]);
-
-  const recipeLookup = useMemo(() => {
-    return new Map(recipes.map((item) => [item.id, item]));
-  }, [recipes]);
-
-  const scaledIngredients = useMemo(() => {
-    if (mode === "dough") {
-      return scaleByDoughWeight(recipe.ingredients, Number(doughTarget) || 0);
-    }
-
-    if (mode === "yield") {
-      return scaleByYield(recipe.ingredients, Number(pieceCount) || 0, Number(pieceWeight) || 0);
-    }
-
-    return scaleByTotalFlour(recipe.ingredients, Number(flourTarget) || 0);
-  }, [doughTarget, flourTarget, mode, pieceCount, pieceWeight, recipe.ingredients]);
-
+  const prefermentRecipes = useMemo(
+    () => recipes.filter((item) => item.id !== recipe.id && item.useAsPreferment),
+    [recipe.id, recipes]
+  );
+  const recipeLookup = useMemo(() => new Map(recipes.map((item) => [item.id, item])), [recipes]);
+  const flourTotal = getTotalFlour(recipe.ingredients);
   const summary = useMemo(() => {
     const prefermentPercentage = recipe.ingredients
       .filter((ingredient) => ingredient.role === "preferment")
       .reduce((total, ingredient) => total + ingredient.bakerPercentage, 0);
 
     return {
-      flour: getTotalFlour(scaledIngredients),
-      liquids: getTotalLiquids(scaledIngredients),
-      doughWeight: getDoughWeight(scaledIngredients),
-      hydration: getHydrationPercentage(scaledIngredients),
-      moisture: getMoistureIndex(scaledIngredients),
+      flour: getTotalFlour(recipe.ingredients),
+      liquids: getTotalLiquids(recipe.ingredients),
+      doughWeight: getDoughWeight(recipe.ingredients),
+      hydration: getHydrationPercentage(recipe.ingredients),
+      moisture: getMoistureIndex(recipe.ingredients),
       preferment: prefermentPercentage > 0 ? `${prefermentPercentage}%` : "No"
     };
-  }, [recipe.ingredients, scaledIngredients]);
+  }, [recipe.ingredients]);
+
+  function syncScaleInputs(nextIngredients: RecipeIngredient[]) {
+    setFlourTargetInput(formatDecimalInput(getTotalFlour(nextIngredients)));
+    setDoughTargetInput(formatDecimalInput(getDoughWeight(nextIngredients)));
+  }
+
+  function updateRecipeIngredients(nextIngredients: RecipeIngredient[], nextNotes?: string) {
+    updateRecipe(recipe.id, getRecipeDraft(recipe, nextIngredients, nextNotes));
+    syncScaleInputs(nextIngredients);
+  }
 
   function openAddIngredient(role: IngredientRole = "other") {
     setEditingIngredientId(null);
-    setDraftIngredient(emptyIngredient(role));
+    setIngredientDraft(emptyIngredient(role));
+    setLastEditedField(null);
     setIngredientVisible(true);
     setMenuVisible(false);
   }
@@ -120,29 +187,90 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     }
 
     setEditingIngredientId(ingredientId);
-    setDraftIngredient({ ...ingredient });
+    setIngredientDraft(toDraftIngredient(ingredient));
+    setLastEditedField(null);
     setIngredientVisible(true);
   }
 
+  function handleIngredientQuantityChange(value: string) {
+    setLastEditedField("quantity");
+    setIngredientDraft((current) => {
+      const percentage =
+        flourTotal > 0 ? getBakerPercentageFromQuantity(parseDecimalInput(value), flourTotal) : 0;
+
+      return {
+        ...current,
+        quantityInput: value,
+        percentageInput:
+          value.trim() && flourTotal > 0 ? formatDecimalInput(percentage) : current.percentageInput
+      };
+    });
+  }
+
+  function handleIngredientPercentageChange(value: string) {
+    setLastEditedField("percentage");
+    setIngredientDraft((current) => {
+      const quantity =
+        flourTotal > 0 ? getQuantityFromBakerPercentage(flourTotal, parseDecimalInput(value)) : 0;
+
+      return {
+        ...current,
+        percentageInput: value,
+        quantityInput:
+          value.trim() && flourTotal > 0 ? formatDecimalInput(quantity) : current.quantityInput
+      };
+    });
+  }
+
   function saveIngredient() {
-    if (!draftIngredient.name.trim()) {
+    const quantity = parseDecimalInput(ingredientDraft.quantityInput);
+    const bakerPercentage = parseDecimalInput(ingredientDraft.percentageInput);
+
+    if (!ingredientDraft.name.trim()) {
       return;
     }
 
-    const nextIngredients = editingIngredientId
+    let nextIngredient: RecipeIngredient = {
+      id: ingredientDraft.id,
+      name: ingredientDraft.name.trim(),
+      quantity,
+      unit: ingredientDraft.unit,
+      role: ingredientDraft.role,
+      bakerPercentage,
+      linkedRecipeId: ingredientDraft.linkedRecipeId,
+      linkedRecipeName: ingredientDraft.linkedRecipeName
+    };
+
+    if (flourTotal > 0) {
+      if (lastEditedField === "percentage") {
+        nextIngredient.quantity = getQuantityFromBakerPercentage(flourTotal, bakerPercentage);
+      }
+
+      if (lastEditedField === "quantity") {
+        nextIngredient.bakerPercentage = getBakerPercentageFromQuantity(quantity, flourTotal);
+      }
+    }
+
+    let nextIngredients = editingIngredientId
       ? recipe.ingredients.map((ingredient) =>
-          ingredient.id === editingIngredientId ? draftIngredient : ingredient
+          ingredient.id === editingIngredientId ? nextIngredient : ingredient
         )
-      : [...recipe.ingredients, draftIngredient];
+      : [...recipe.ingredients, nextIngredient];
 
-    updateRecipe(recipe.id, {
-      name: recipe.name,
-      description: recipe.description ?? "",
-      notes: recipe.notes ?? "",
-      useAsPreferment: recipe.useAsPreferment ?? false,
-      ingredients: nextIngredients
-    });
+    if (
+      nextIngredient.role === "flour" &&
+      lastEditedField === "quantity" &&
+      recipe.ingredients.filter((ingredient) => ingredient.role === "flour").length === 1
+    ) {
+      nextIngredients = applyScaleByTotalFlour(recipe.ingredients, nextIngredient.quantity).map(
+        (ingredient) =>
+          ingredient.id === nextIngredient.id
+            ? { ...ingredient, name: nextIngredient.name, unit: nextIngredient.unit }
+            : ingredient
+      );
+    }
 
+    updateRecipeIngredients(nextIngredients);
     Keyboard.dismiss();
     setIngredientVisible(false);
   }
@@ -152,20 +280,15 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       return;
     }
 
-    updateRecipe(recipe.id, {
-      name: recipe.name,
-      description: recipe.description ?? "",
-      notes: recipe.notes ?? "",
-      useAsPreferment: recipe.useAsPreferment ?? false,
-      ingredients: recipe.ingredients.filter((ingredient) => ingredient.id !== editingIngredientId)
-    });
-
+    updateRecipeIngredients(
+      recipe.ingredients.filter((ingredient) => ingredient.id !== editingIngredientId)
+    );
     Keyboard.dismiss();
     setIngredientVisible(false);
   }
 
-  function duplicateFormula() {
-    createRecipe({
+  function duplicateRecipe() {
+    const duplicatedId = createRecipe({
       name: `${recipe.name} copia`,
       description: recipe.description ?? "",
       notes: recipe.notes ?? "",
@@ -177,58 +300,86 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     });
 
     setMenuVisible(false);
-    router.replace("/");
+    router.replace(`/recipes/${duplicatedId}`);
+  }
+
+  function openNotesModal() {
+    setNotesDraft(recipe.notes ?? "");
+    setNotesVisible(true);
+  }
+
+  function saveNotes() {
+    updateRecipeIngredients(recipe.ingredients, notesDraft);
+    Keyboard.dismiss();
+    setNotesVisible(false);
+  }
+
+  function applyAdjustment() {
+    let nextIngredients = recipe.ingredients;
+
+    if (mode === "flour") {
+      nextIngredients = applyScaleByTotalFlour(recipe.ingredients, parseDecimalInput(flourTargetInput));
+    }
+
+    if (mode === "dough") {
+      nextIngredients = applyScaleByDoughWeight(recipe.ingredients, parseDecimalInput(doughTargetInput));
+    }
+
+    if (mode === "yield") {
+      nextIngredients = applyScaleByYield(
+        recipe.ingredients,
+        Math.max(0, Math.round(parseDecimalInput(pieceCountInput))),
+        parseDecimalInput(pieceWeightInput)
+      );
+    }
+
+    updateRecipeIngredients(nextIngredients);
+    Keyboard.dismiss();
+    setScaleVisible(false);
   }
 
   function openPrefermentModal() {
     setSelectedPrefermentId(null);
     setPrefermentMode("grams");
-    setPrefermentQuantity("");
+    setPrefermentQuantityInput("");
     setPrefermentVisible(true);
+    setMenuVisible(false);
   }
 
   function savePrefermentIngredient() {
     const selected = prefermentRecipes.find((item) => item.id === selectedPrefermentId);
-    const numericValue = Number(prefermentQuantity) || 0;
-    const flourTotal = getTotalFlour(recipe.ingredients);
+    const numericValue = parseDecimalInput(prefermentQuantityInput);
 
     if (!selected || numericValue <= 0) {
       return;
     }
 
-    const quantity = prefermentMode === "grams" ? numericValue : (flourTotal * numericValue) / 100;
+    const quantity =
+      prefermentMode === "grams"
+        ? numericValue
+        : getQuantityFromBakerPercentage(flourTotal, numericValue);
 
     const bakerPercentage =
       prefermentMode === "percent"
         ? numericValue
-        : flourTotal > 0
-          ? Math.round((quantity / flourTotal) * 1000) / 10
-          : 0;
+        : getBakerPercentageFromQuantity(quantity, flourTotal);
 
-    const prefermentIngredient: RecipeIngredient = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: selected.name,
-      quantity,
-      unit: "g",
-      role: "preferment",
-      bakerPercentage,
-      linkedRecipeId: selected.id,
-      linkedRecipeName: selected.name
-    };
-
-    updateRecipe(recipe.id, {
-      name: recipe.name,
-      description: recipe.description ?? "",
-      notes: recipe.notes ?? "",
-      useAsPreferment: recipe.useAsPreferment ?? false,
-      ingredients: [...recipe.ingredients, prefermentIngredient]
-    });
+    updateRecipeIngredients([
+      ...recipe.ingredients,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: selected.name,
+        quantity,
+        unit: "g",
+        role: "preferment",
+        bakerPercentage,
+        linkedRecipeId: selected.id,
+        linkedRecipeName: selected.name
+      }
+    ]);
 
     Keyboard.dismiss();
     setPrefermentVisible(false);
-    setSelectedPrefermentId(null);
-    setPrefermentMode("grams");
-    setPrefermentQuantity("");
   }
 
   return (
@@ -248,11 +399,11 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               <Text style={styles.iconText}>+</Text>
             </Pressable>
             <Pressable
-              onPress={() => router.push(`/recipes/form?id=${recipe.id}`)}
-              accessibilityLabel="Editar receta"
+              accessibilityLabel="Notas de receta"
+              onPress={openNotesModal}
               style={styles.iconButton}
             >
-              <Text style={styles.editIcon}>✎</Text>
+              <Text style={styles.editIcon}>{"\u270E"}</Text>
             </Pressable>
             <Pressable onPress={() => setMenuVisible(true)} style={styles.iconButton}>
               <Text style={styles.menuIcon}>{"\u22EE"}</Text>
@@ -275,19 +426,13 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       </View>
 
       <View style={styles.ingredientsList}>
-        {scaledIngredients.map((ingredient) => (
+        {recipe.ingredients.map((ingredient) => (
           <IngredientRow
-            ingredient={{
-              ...ingredient,
-              quantity: ingredient.scaledQuantity
-            }}
+            ingredient={ingredient}
             key={ingredient.id}
             onPress={() => openEditIngredient(ingredient.id)}
             prefermentBreakdown={getPrefermentBreakdown(
-              {
-                ...ingredient,
-                quantity: ingredient.scaledQuantity
-              },
+              ingredient,
               (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
               recipe.id
             )}
@@ -296,7 +441,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       </View>
 
       <Modal
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => {
           Keyboard.dismiss();
           setIngredientVisible(false);
@@ -306,68 +451,44 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       >
         <CenteredModalSheet>
           <Text style={styles.sheetTitle}>
-            {editingIngredientId ? "Editar ingrediente" : "Añadir ingrediente"}
+            {editingIngredientId ? "Editar ingrediente" : "Anadir ingrediente"}
           </Text>
-
+          <FieldLabel label="Nombre del ingrediente" />
           <TextInput
-            onChangeText={(value) => setDraftIngredient((current) => ({ ...current, name: value }))}
+            onChangeText={(value) => setIngredientDraft((current) => ({ ...current, name: value }))}
             placeholder="Nombre"
             placeholderTextColor={theme.colors.textMuted}
             style={styles.field}
-            value={draftIngredient.name}
+            value={ingredientDraft.name}
           />
-
-          <View style={styles.inlineFields}>
-            <TextInput
-              keyboardType="decimal-pad"
-              onChangeText={(value) =>
-                setDraftIngredient((current) => ({
-                  ...current,
-                  quantity: Number(value) || 0
-                }))
-              }
-              placeholder="Gramos"
-              placeholderTextColor={theme.colors.textMuted}
-              style={[styles.field, styles.flex]}
-              value={draftIngredient.quantity ? String(draftIngredient.quantity) : ""}
-            />
-            <TextInput
-              keyboardType="decimal-pad"
-              onChangeText={(value) =>
-                setDraftIngredient((current) => ({
-                  ...current,
-                  bakerPercentage: Number(value) || 0
-                }))
-              }
-              placeholder="%"
-              placeholderTextColor={theme.colors.textMuted}
-              style={[styles.field, styles.percentField]}
-              value={draftIngredient.bakerPercentage ? String(draftIngredient.bakerPercentage) : ""}
-            />
-          </View>
-
-          <View style={styles.choiceRow}>
-            {units.map((unit) => (
-              <ChoiceButton
-                active={draftIngredient.unit === unit}
-                key={unit}
-                label={unit}
-                onPress={() => setDraftIngredient((current) => ({ ...current, unit }))}
-              />
-            ))}
-          </View>
-
+          <FieldLabel label={ingredientFieldCopy.amount.label} />
+          <InputWithSuffix
+            keyboardType="decimal-pad"
+            onChangeText={handleIngredientQuantityChange}
+            placeholder={ingredientFieldCopy.amount.placeholder}
+            suffix={ingredientFieldCopy.amount.unit}
+            value={ingredientDraft.quantityInput}
+          />
+          <FieldLabel label={ingredientFieldCopy.percentage.label} />
+          <InputWithSuffix
+            keyboardType="decimal-pad"
+            onChangeText={handleIngredientPercentageChange}
+            placeholder={ingredientFieldCopy.percentage.placeholder}
+            suffix={ingredientFieldCopy.percentage.unit}
+            value={ingredientDraft.percentageInput}
+          />
+          <FieldLabel label="Rol del ingrediente" />
           <View style={styles.choiceRow}>
             {roles.map((role) => (
-              <ChoiceButton
-                active={draftIngredient.role === role}
+              <RoleChoiceButton
+                active={ingredientDraft.role === role}
                 key={role}
                 label={ingredientRoleLabels[role]}
-                onPress={() => setDraftIngredient((current) => ({ ...current, role }))}
+                role={role}
+                onPress={() => setIngredientDraft((current) => ({ ...current, role }))}
               />
             ))}
           </View>
-
           <View style={styles.sheetActions}>
             {editingIngredientId ? (
               <Pressable onPress={removeIngredient} style={styles.destructiveButton}>
@@ -391,39 +512,91 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       </Modal>
 
       <Modal
-        animationType="slide"
+        animationType="fade"
+        onRequestClose={() => setNotesVisible(false)}
+        transparent
+        visible={notesVisible}
+      >
+        <CenteredModalSheet>
+          <Text style={styles.sheetTitle}>Notas</Text>
+          <TextInput
+            multiline
+            onChangeText={setNotesDraft}
+            placeholder="Notas de trabajo"
+            placeholderTextColor={theme.colors.textMuted}
+            style={[styles.field, styles.notesField]}
+            textAlignVertical="top"
+            value={notesDraft}
+          />
+          <View style={styles.sheetActions}>
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                setNotesVisible(false);
+              }}
+              style={styles.textAction}
+            >
+              <Text style={styles.textActionLabel}>Cancelar</Text>
+            </Pressable>
+            <Pressable onPress={saveNotes} style={styles.primaryAction}>
+              <Text style={styles.primaryActionLabel}>Guardar</Text>
+            </Pressable>
+          </View>
+        </CenteredModalSheet>
+      </Modal>
+
+      <Modal
+        animationType="fade"
         onRequestClose={() => setScaleVisible(false)}
         transparent
         visible={scaleVisible}
       >
-        <ModalSheet>
-          <Text style={styles.sheetTitle}>Ajustar formula</Text>
-
-          <View style={styles.choiceRow}>
-            <ChoiceButton active={mode === "flour"} label="Por harina" onPress={() => setMode("flour")} />
-            <ChoiceButton active={mode === "dough"} label="Por masa" onPress={() => setMode("dough")} />
-            <ChoiceButton active={mode === "yield"} label="Por piezas" onPress={() => setMode("yield")} />
-          </View>
+        <CenteredModalSheet>
+          <Text style={styles.sheetTitle}>Ajustar receta</Text>
+          <ScaleOption
+            active={mode === "flour"}
+            descriptionVisible={scaleHelp === "flour"}
+            label="Por harina"
+            onInfoPress={() => setScaleHelp((current) => (current === "flour" ? null : "flour"))}
+            onPress={() => setMode("flour")}
+          />
+          {scaleHelp === "flour" ? <Text style={styles.helperText}>{scaleCopy.flour}</Text> : null}
+          <ScaleOption
+            active={mode === "dough"}
+            descriptionVisible={scaleHelp === "dough"}
+            label="Por masa total"
+            onInfoPress={() => setScaleHelp((current) => (current === "dough" ? null : "dough"))}
+            onPress={() => setMode("dough")}
+          />
+          {scaleHelp === "dough" ? <Text style={styles.helperText}>{scaleCopy.dough}</Text> : null}
+          <ScaleOption
+            active={mode === "yield"}
+            descriptionVisible={scaleHelp === "yield"}
+            label="Por piezas"
+            onInfoPress={() => setScaleHelp((current) => (current === "yield" ? null : "yield"))}
+            onPress={() => setMode("yield")}
+          />
+          {scaleHelp === "yield" ? <Text style={styles.helperText}>{scaleCopy.yield}</Text> : null}
 
           {mode === "flour" ? (
             <TextInput
               keyboardType="decimal-pad"
-              onChangeText={setFlourTarget}
-              placeholder="Harina total"
+              onChangeText={setFlourTargetInput}
+              placeholder="Harina total objetivo (g)"
               placeholderTextColor={theme.colors.textMuted}
               style={styles.field}
-              value={flourTarget}
+              value={flourTargetInput}
             />
           ) : null}
 
           {mode === "dough" ? (
             <TextInput
               keyboardType="decimal-pad"
-              onChangeText={setDoughTarget}
-              placeholder="Peso total de masa"
+              onChangeText={setDoughTargetInput}
+              placeholder="Masa total objetivo (g)"
               placeholderTextColor={theme.colors.textMuted}
               style={styles.field}
-              value={doughTarget}
+              value={doughTargetInput}
             />
           ) : null}
 
@@ -431,38 +604,47 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             <View style={styles.inlineFields}>
               <TextInput
                 keyboardType="number-pad"
-                onChangeText={setPieceCount}
-                placeholder="Piezas"
+                onChangeText={setPieceCountInput}
+                placeholder="Cantidad de piezas"
                 placeholderTextColor={theme.colors.textMuted}
                 style={[styles.field, styles.flex]}
-                value={pieceCount}
+                value={pieceCountInput}
               />
               <TextInput
                 keyboardType="decimal-pad"
-                onChangeText={setPieceWeight}
-                placeholder="Peso por pieza"
+                onChangeText={setPieceWeightInput}
+                placeholder="Peso por pieza (g)"
                 placeholderTextColor={theme.colors.textMuted}
                 style={[styles.field, styles.flex]}
-                value={pieceWeight}
+                value={pieceWeightInput}
               />
             </View>
           ) : null}
 
           <View style={styles.sheetActions}>
-            <Pressable onPress={() => setScaleVisible(false)} style={styles.primaryAction}>
-              <Text style={styles.primaryActionLabel}>Listo</Text>
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                setScaleVisible(false);
+              }}
+              style={styles.textAction}
+            >
+              <Text style={styles.textActionLabel}>Cancelar</Text>
+            </Pressable>
+            <Pressable onPress={applyAdjustment} style={styles.primaryAction}>
+              <Text style={styles.primaryActionLabel}>Aplicar ajuste</Text>
             </Pressable>
           </View>
-        </ModalSheet>
+        </CenteredModalSheet>
       </Modal>
 
       <Modal
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setPrefermentVisible(false)}
         transparent
         visible={prefermentVisible}
       >
-        <ModalSheet>
+        <CenteredModalSheet>
           <Text style={styles.sheetTitle}>Agregar prefermento</Text>
           <View style={styles.prefermentList}>
             {prefermentRecipes.map((item) => (
@@ -488,7 +670,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               <Text style={styles.notesText}>No hay formulas marcadas como prefermento.</Text>
             ) : null}
           </View>
-
           <View style={styles.choiceRow}>
             <ChoiceButton
               active={prefermentMode === "grams"}
@@ -501,44 +682,29 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               onPress={() => setPrefermentMode("percent")}
             />
           </View>
-
           <TextInput
             keyboardType="decimal-pad"
-            onChangeText={setPrefermentQuantity}
+            onChangeText={setPrefermentQuantityInput}
             placeholder={prefermentMode === "grams" ? "Cantidad en gramos" : "Porcentaje panadero"}
             placeholderTextColor={theme.colors.textMuted}
             style={styles.field}
-            value={prefermentQuantity}
+            value={prefermentQuantityInput}
           />
-
           <View style={styles.sheetActions}>
-            <Pressable onPress={() => setPrefermentVisible(false)} style={styles.textAction}>
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                setPrefermentVisible(false);
+              }}
+              style={styles.textAction}
+            >
               <Text style={styles.textActionLabel}>Cancelar</Text>
             </Pressable>
             <Pressable onPress={savePrefermentIngredient} style={styles.primaryAction}>
-              <Text style={styles.primaryActionLabel}>Agregar</Text>
+              <Text style={styles.primaryActionLabel}>Guardar</Text>
             </Pressable>
           </View>
-        </ModalSheet>
-      </Modal>
-
-      <Modal
-        animationType="fade"
-        onRequestClose={() => setNotesVisible(false)}
-        transparent
-        visible={notesVisible}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.menuSheet}>
-            <Text style={styles.sheetTitle}>Notas</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.notesText}>{recipe.notes?.trim() || "Sin notas"}</Text>
-            </ScrollView>
-            <Pressable onPress={() => setNotesVisible(false)} style={styles.primaryAction}>
-              <Text style={styles.primaryActionLabel}>Cerrar</Text>
-            </Pressable>
-          </View>
-        </View>
+        </CenteredModalSheet>
       </Modal>
 
       <Modal
@@ -550,29 +716,23 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         <View style={styles.modalBackdrop}>
           <View style={styles.menuSheet}>
             <MenuAction
-              label="Ajustar formula"
+              label="Ajustar receta"
               onPress={() => {
                 setMenuVisible(false);
                 setScaleVisible(true);
               }}
             />
+            <MenuAction label="Agregar prefermento" onPress={openPrefermentModal} />
+            <MenuAction label="Duplicar receta" onPress={duplicateRecipe} />
             <MenuAction
-              label="Notas"
+              label="Editar datos de receta"
               onPress={() => {
                 setMenuVisible(false);
-                setNotesVisible(true);
+                router.push(`/recipes/form?id=${recipe.id}`);
               }}
             />
             <MenuAction
-              label="Agregar prefermento"
-              onPress={() => {
-                setMenuVisible(false);
-                openPrefermentModal();
-              }}
-            />
-            <MenuAction label="Duplicar formula" onPress={duplicateFormula} />
-            <MenuAction
-              label="Eliminar formula"
+              label="Eliminar receta"
               onPress={() => {
                 setMenuVisible(false);
                 deleteRecipe(recipe.id);
@@ -586,25 +746,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         </View>
       </Modal>
     </View>
-  );
-}
-
-function ModalSheet({ children }: { children: ReactNode }) {
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.select({ ios: "padding", android: "height" })}
-      style={styles.modalBackdrop}
-    >
-      <View style={styles.sheet}>
-        <ScrollView
-          contentContainerStyle={styles.sheetScrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.sheetContent}>{children}</View>
-        </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
   );
 }
 
@@ -652,6 +793,34 @@ function ChoiceButton({
   );
 }
 
+function RoleChoiceButton({
+  active,
+  label,
+  onPress,
+  role
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+  role: IngredientRole;
+}) {
+  const appearance = getIngredientRoleAppearance(role);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.roleChoiceButton,
+        { backgroundColor: appearance.background, borderColor: appearance.dot },
+        active && styles.roleChoiceButtonActive
+      ]}
+    >
+      <View style={[styles.roleChoiceDot, { backgroundColor: appearance.dot }]} />
+      <Text style={[styles.roleChoiceLabel, { color: appearance.text }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function MenuAction({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={styles.menuAction}>
@@ -660,15 +829,67 @@ function MenuAction({ label, onPress }: { label: string; onPress: () => void }) 
   );
 }
 
-function emptyIngredient(role: IngredientRole = "other"): RecipeIngredient {
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: "",
-    quantity: 0,
-    unit: "g",
-    role,
-    bakerPercentage: 0
-  };
+function ScaleOption({
+  active,
+  descriptionVisible,
+  label,
+  onInfoPress,
+  onPress
+}: {
+  active: boolean;
+  descriptionVisible: boolean;
+  label: string;
+  onInfoPress: () => void;
+  onPress: () => void;
+}) {
+  return (
+    <View style={styles.scaleOptionRow}>
+      <Pressable onPress={onPress} style={[styles.scaleOption, active && styles.scaleOptionActive]}>
+        <Text style={[styles.scaleOptionLabel, active && styles.scaleOptionLabelActive]}>{label}</Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel={`Ayuda sobre ${label}`}
+        onPress={onInfoPress}
+        style={[styles.helpButton, descriptionVisible && styles.helpButtonActive]}
+      >
+        <Text style={[styles.helpButtonText, descriptionVisible && styles.helpButtonTextActive]}>?</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function FieldLabel({ label }: { label: string }) {
+  return <Text style={styles.fieldLabel}>{label}</Text>;
+}
+
+function InputWithSuffix({
+  keyboardType,
+  onChangeText,
+  placeholder,
+  suffix,
+  value
+}: {
+  keyboardType: "decimal-pad" | "number-pad";
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  suffix: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.inputWithSuffix}>
+      <TextInput
+        keyboardType={keyboardType}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.textMuted}
+        style={[styles.field, styles.inputWithSuffixField]}
+        value={value}
+      />
+      <View style={styles.inputSuffix}>
+        <Text style={styles.inputSuffixText}>{suffix}</Text>
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -685,10 +906,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 22,
     paddingHorizontal: theme.spacing.md,
     shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 6
-    },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.1,
     shadowRadius: 14
   },
@@ -795,15 +1013,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: theme.spacing.md
   },
-  sheet: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.borderStrong,
-    borderTopWidth: 1,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
-    maxHeight: "88%",
-    padding: theme.spacing.lg
-  },
   centeredSheet: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.borderStrong,
@@ -811,13 +1020,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     elevation: 6,
     maxHeight: "82%",
-    maxWidth: 520,
+    maxWidth: 560,
     padding: theme.spacing.lg,
     shadowColor: "#000000",
-    shadowOffset: {
-      width: 0,
-      height: 8
-    },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.12,
     shadowRadius: 18,
     width: "90%"
@@ -845,6 +1051,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     paddingBottom: 8
   },
+  fieldLabel: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "700"
+  },
   field: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.borderStrong,
@@ -854,15 +1065,45 @@ const styles = StyleSheet.create({
     minHeight: 46,
     paddingHorizontal: 14
   },
+  inputWithSuffix: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs
+  },
+  inputWithSuffixField: {
+    flex: 1
+  },
+  inputSuffix: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    minWidth: 52,
+    paddingHorizontal: 10
+  },
+  inputSuffixText: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    fontWeight: "700"
+  },
+  notesField: {
+    minHeight: 140,
+    paddingVertical: 14
+  },
+  helperText: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 20
+  },
   inlineFields: {
     flexDirection: "row",
     gap: theme.spacing.sm
   },
   flex: {
     flex: 1
-  },
-  percentField: {
-    width: 88
   },
   choiceRow: {
     flexDirection: "row",
@@ -888,6 +1129,75 @@ const styles = StyleSheet.create({
   choiceLabelActive: {
     color: "#F8F5F1",
     fontWeight: "700"
+  },
+  roleChoiceButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  roleChoiceButtonActive: {
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4
+  },
+  roleChoiceDot: {
+    borderRadius: 999,
+    height: 8,
+    width: 8
+  },
+  roleChoiceLabel: {
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  scaleOptionRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs
+  },
+  scaleOption: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  scaleOptionActive: {
+    backgroundColor: theme.colors.accent
+  },
+  scaleOptionLabel: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  scaleOptionLabelActive: {
+    color: "#F8F5F1"
+  },
+  helpButton: {
+    alignItems: "center",
+    borderColor: theme.colors.borderStrong,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: "center",
+    width: 32
+  },
+  helpButtonActive: {
+    backgroundColor: theme.colors.surfaceMuted
+  },
+  helpButtonText: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  helpButtonTextActive: {
+    color: theme.colors.text
   },
   sheetActions: {
     alignItems: "center",

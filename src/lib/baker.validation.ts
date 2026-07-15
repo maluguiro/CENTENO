@@ -1,8 +1,13 @@
 import {
+  applyScaleByTotalFlour,
+  applyScaleByYield,
+  parseDecimalInput,
+  getBakerPercentageFromQuantity,
   getDoughWeight,
   getHydrationPercentage,
   getMoistureIndex,
   getPrefermentBreakdown,
+  getQuantityFromBakerPercentage,
   getScaledDoughWeight,
   getTotalFats,
   getTotalFlour,
@@ -196,6 +201,53 @@ function runPrefermentBreakdownCase() {
   });
 }
 
+function runBaseRecipeCase() {
+  const ingredients: RecipeIngredient[] = [
+    ingredient("flour", "Harina", 500, "flour", 100),
+    ingredient("water", "Agua", 300, "water", 60),
+    ingredient("salt", "Sal", 10, "salt", 2),
+    ingredient("yeast", "Levadura", 10, "yeast", 2)
+  ];
+
+  assertEqual(getQuantityFromBakerPercentage(500, 60), 300);
+  assertEqual(getQuantityFromBakerPercentage(500, 2), 10);
+  assertEqual(getHydrationPercentage(ingredients), 60);
+  assertEqual(getDoughWeight(ingredients), 820);
+}
+
+function runAdjustPercentageCase() {
+  const flourTotal = 1000;
+
+  assertEqual(getQuantityFromBakerPercentage(flourTotal, 75), 750);
+  assertEqual(getQuantityFromBakerPercentage(flourTotal, 2.5), 25);
+  assertEqual(getBakerPercentageFromQuantity(25, flourTotal), 2.5);
+}
+
+function runDecimalParsingCase() {
+  assertEqual(parseDecimalInput("2,5"), 2.5);
+  assertEqual(parseDecimalInput("2.5"), 2.5);
+  assertEqual(parseDecimalInput("17,6"), 17.6);
+}
+
+function runAppliedScalingCases() {
+  const ingredients: RecipeIngredient[] = [
+    ingredient("flour", "Harina", 500, "flour", 100),
+    ingredient("water", "Agua", 300, "water", 60),
+    ingredient("salt", "Sal", 10, "salt", 2),
+    ingredient("yeast", "Levadura", 10, "yeast", 2)
+  ];
+
+  const flourScaled = applyScaleByTotalFlour(ingredients, 1000);
+
+  assertDeepEqual(
+    flourScaled.map((ingredient) => ingredient.quantity),
+    [1000, 600, 20, 20]
+  );
+
+  const yieldScaled = applyScaleByYield(ingredients, 10, 200);
+  assertEqual(getDoughWeight(yieldScaled), 2000);
+}
+
 export function runBakerValidation() {
   runSimpleFormulaCase();
   runFatFormulaCase();
@@ -205,6 +257,10 @@ export function runBakerValidation() {
   runScaleByDoughWeightCase();
   runScaleByYieldCase();
   runPrefermentBreakdownCase();
+  runBaseRecipeCase();
+  runAdjustPercentageCase();
+  runDecimalParsingCase();
+  runAppliedScalingCases();
 
   return "baker validation passed";
 }

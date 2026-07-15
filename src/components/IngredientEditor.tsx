@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { ingredientRoleLabels } from "@/lib/ingredientLabels";
+import { parseDecimalInput } from "@/lib/baker";
 import { theme } from "@/theme";
 import type {
   IngredientRole,
@@ -51,7 +52,7 @@ export function IngredientEditor({
         <TextInput
           keyboardType="decimal-pad"
           onChangeText={(value) =>
-            onChange({ ...ingredient, quantity: Number(value) || 0 })
+            onChange({ ...ingredient, quantity: parseDecimalInput(value) })
           }
           placeholder="Cantidad"
           placeholderTextColor={theme.colors.textMuted}
@@ -85,7 +86,7 @@ export function IngredientEditor({
         <TextInput
           keyboardType="decimal-pad"
           onChangeText={(value) =>
-            onChange({ ...ingredient, bakerPercentage: Number(value) || 0 })
+            onChange({ ...ingredient, bakerPercentage: parseDecimalInput(value) })
           }
           placeholder="% panadero"
           placeholderTextColor={theme.colors.textMuted}

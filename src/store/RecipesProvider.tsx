@@ -20,14 +20,14 @@ type RecipesState = {
 
 type RecipesAction =
   | { type: "hydrate"; payload: Recipe[] }
-  | { type: "create"; payload: RecipeDraft }
+  | { type: "create"; payload: Recipe }
   | { type: "update"; payload: { id: string; draft: RecipeDraft } }
   | { type: "delete"; payload: { id: string } };
 
 type RecipesContextValue = {
   recipes: Recipe[];
   isReady: boolean;
-  createRecipe: (draft: RecipeDraft) => void;
+  createRecipe: (draft: RecipeDraft) => string;
   updateRecipe: (id: string, draft: RecipeDraft) => void;
   deleteRecipe: (id: string) => void;
   getRecipeById: (id: string) => Recipe | undefined;
@@ -44,19 +44,7 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
     case "hydrate":
       return { recipes: action.payload };
     case "create": {
-      const timestamp = new Date().toISOString();
-      const recipe: Recipe = {
-        id: makeId(),
-        name: action.payload.name.trim(),
-        description: action.payload.description.trim(),
-        notes: action.payload.notes.trim(),
-        useAsPreferment: action.payload.useAsPreferment,
-        ingredients: action.payload.ingredients,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      };
-
-      return { recipes: [recipe, ...state.recipes] };
+      return { recipes: [action.payload, ...state.recipes] };
     }
     case "update":
       return {
@@ -129,16 +117,27 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       recipes: state.recipes,
       isReady,
       createRecipe: (draft) => {
+        const timestamp = new Date().toISOString();
+        const recipe: Recipe = {
+          id: makeId(),
+          name: draft.name.trim(),
+          description: draft.description.trim(),
+          notes: draft.notes.trim(),
+          useAsPreferment: draft.useAsPreferment,
+          ingredients: draft.ingredients.map((ingredient) => ({
+            ...ingredient,
+            id: ingredient.id || makeId()
+          })),
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+
         dispatch({
           type: "create",
-          payload: {
-            ...draft,
-            ingredients: draft.ingredients.map((ingredient) => ({
-              ...ingredient,
-              id: ingredient.id || makeId()
-            }))
-          }
+          payload: recipe
         });
+
+        return recipe.id;
       },
       updateRecipe: (id, draft) => {
         dispatch({
