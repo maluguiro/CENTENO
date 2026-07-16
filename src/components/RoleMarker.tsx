@@ -13,10 +13,8 @@ export function RoleMarker({ role }: RoleMarkerProps) {
 
 const styles = StyleSheet.create({
   dot: {
-    borderColor: "rgba(255,255,255,0.7)",
-    borderWidth: 1,
     borderRadius: 999,
-    height: 9,
-    width: 9
+    height: 8,
+    width: 8
   }
 });

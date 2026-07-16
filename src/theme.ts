@@ -18,6 +18,11 @@ export const theme = {
     warning: "#B8793A",
     danger: "#9E4B3F"
   },
+  interaction: {
+    pressedOpacity: 0.72,
+    pressedScale: 0.98,
+    subtleBg: "rgba(107, 78, 61, 0.08)"
+  },
   radius: {
     xs: 8,
     sm: 16,

@@ -13,7 +13,10 @@ export function FormulaListItem({ recipe, onPress }: FormulaListItemProps) {
   const summary = getRecipeSummary(recipe);
 
   return (
-    <Pressable onPress={onPress} style={styles.row}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
       <View style={styles.main}>
         <Text numberOfLines={1} style={styles.name}>
           {recipe.name}
@@ -44,6 +47,10 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
     minHeight: 76,
     paddingVertical: 16
+  },
+  rowPressed: {
+    opacity: theme.interaction.pressedOpacity,
+    backgroundColor: theme.interaction.subtleBg
   },
   main: {
     flex: 1,

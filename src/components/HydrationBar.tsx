@@ -27,7 +27,7 @@ export function HydrationBar({ hydration }: HydrationBarProps) {
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: 8
+    gap: 6
   },
   labels: {
     alignItems: "center",
@@ -35,9 +35,10 @@ const styles = StyleSheet.create({
     gap: 10
   },
   edge: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    width: 34
+    color: theme.colors.textSoft,
+    fontSize: 11,
+    fontWeight: "600",
+    width: 32
   },
   barWrap: {
     flex: 1
@@ -45,8 +46,8 @@ const styles = StyleSheet.create({
   track: {
     alignItems: "center",
     backgroundColor: theme.colors.waterSoft,
-    borderRadius: 14,
-    height: 28,
+    borderRadius: 16,
+    height: 36,
     justifyContent: "center",
     overflow: "hidden",
     position: "relative"
@@ -61,7 +62,7 @@ const styles = StyleSheet.create({
   },
   centerValue: {
     color: theme.colors.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800"
   }
 });

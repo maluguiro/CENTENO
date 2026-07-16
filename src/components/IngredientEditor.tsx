@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { ingredientRoleLabels } from "@/lib/ingredientLabels";
+import { ingredientRoleLabels, getIngredientRoleAppearance } from "@/lib/ingredientLabels";
 import { parseDecimalInput } from "@/lib/baker";
 import { theme } from "@/theme";
 import type {
@@ -43,7 +43,10 @@ export function IngredientEditor({
           style={[styles.input, styles.flex]}
           value={ingredient.name}
         />
-        <Pressable onPress={onRemove} style={styles.removeButton}>
+        <Pressable
+          onPress={onRemove}
+          style={({ pressed }) => [styles.removeButton, pressed && styles.removeButtonPressed]}
+        >
           <Text style={styles.removeText}>Quitar</Text>
         </Pressable>
       </View>
@@ -64,9 +67,10 @@ export function IngredientEditor({
             <Pressable
               key={unit}
               onPress={() => onChange({ ...ingredient, unit })}
-              style={[
+              style={({ pressed }) => [
                 styles.unitChip,
-                ingredient.unit === unit && styles.unitChipActive
+                ingredient.unit === unit && styles.unitChipActive,
+                pressed && styles.chipPressed
               ]}
             >
               <Text
@@ -96,25 +100,38 @@ export function IngredientEditor({
       </View>
 
       <View style={styles.roleGroup}>
-        {roles.map((role) => (
-          <Pressable
-            key={role}
-            onPress={() => onChange({ ...ingredient, role })}
-            style={[
-              styles.roleChip,
-              ingredient.role === role && styles.roleChipActive
-            ]}
-          >
-            <Text
-              style={[
-                styles.roleText,
-                ingredient.role === role && styles.roleTextActive
+        {roles.map((role) => {
+          const isSelected = ingredient.role === role;
+          const appearance = getIngredientRoleAppearance(role);
+          return (
+            <Pressable
+              key={role}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              onPress={() => onChange({ ...ingredient, role })}
+              style={({ pressed }) => [
+                styles.roleChip,
+                { borderColor: isSelected ? appearance.dot : theme.colors.border },
+                isSelected && { backgroundColor: appearance.background },
+                pressed && styles.chipPressed
               ]}
             >
-              {ingredientRoleLabels[role]}
-            </Text>
-          </Pressable>
-        ))}
+              <View style={[styles.roleDot, { backgroundColor: appearance.dot }]} />
+              <Text
+                style={[
+                  styles.roleText,
+                  { color: isSelected ? appearance.text : theme.colors.textMuted },
+                  isSelected && styles.roleTextActive
+                ]}
+              >
+                {ingredientRoleLabels[role]}
+              </Text>
+              {isSelected ? (
+                <Text style={[styles.roleCheck, { color: appearance.text }]}>{"\u2713"}</Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -154,6 +171,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12
   },
+  removeButtonPressed: {
+    opacity: theme.interaction.pressedOpacity
+  },
   removeText: {
     color: theme.colors.danger,
     fontWeight: "700"
@@ -175,6 +195,9 @@ const styles = StyleSheet.create({
   unitChipActive: {
     backgroundColor: theme.colors.accent
   },
+  chipPressed: {
+    opacity: theme.interaction.pressedOpacity
+  },
   unitText: {
     color: theme.colors.textMuted,
     fontSize: 12,
@@ -189,22 +212,30 @@ const styles = StyleSheet.create({
     gap: 6
   },
   roleChip: {
+    alignItems: "center",
     backgroundColor: theme.colors.surfaceMuted,
     borderColor: theme.colors.border,
     borderWidth: 1,
     borderRadius: 999,
+    flexDirection: "row",
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 8
+    paddingVertical: 7
   },
-  roleChipActive: {
-    backgroundColor: theme.colors.accentDeep
+  roleDot: {
+    borderRadius: 999,
+    height: 7,
+    width: 7
   },
   roleText: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600"
   },
   roleTextActive: {
-    color: "#F8F5F1"
+    fontWeight: "700"
+  },
+  roleCheck: {
+    fontSize: 11,
+    fontWeight: "800"
   }
 });

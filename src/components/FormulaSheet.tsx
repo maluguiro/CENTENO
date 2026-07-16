@@ -388,7 +388,10 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       <View style={[styles.header, { marginTop: insets.top + 10 }]}>
         <View style={styles.toolbar}>
           <View style={styles.headerLeft}>
-            <Pressable onPress={() => router.back()} style={styles.iconButton}>
+            <Pressable
+              onPress={() => router.back()}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+            >
               <Text style={styles.iconText}>{"\u2039"}</Text>
             </Pressable>
             <Text ellipsizeMode="tail" numberOfLines={1} style={styles.title}>
@@ -396,17 +399,23 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             </Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable onPress={() => openAddIngredient()} style={styles.iconButton}>
+            <Pressable
+              onPress={() => openAddIngredient()}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+            >
               <Text style={styles.iconText}>+</Text>
             </Pressable>
             <Pressable
               accessibilityLabel="Notas de receta"
               onPress={openNotesModal}
-              style={styles.iconButton}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             >
               <Text style={styles.editIcon}>{"\u270E"}</Text>
             </Pressable>
-            <Pressable onPress={() => setMenuVisible(true)} style={styles.iconButton}>
+            <Pressable
+              onPress={() => setMenuVisible(true)}
+              style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+            >
               <Text style={styles.menuIcon}>{"\u22EE"}</Text>
             </Pressable>
           </View>
@@ -504,7 +513,10 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
           </View>
           <View style={styles.sheetActions}>
             {editingIngredientId ? (
-              <Pressable onPress={removeIngredient} style={styles.destructiveButton}>
+              <Pressable
+                onPress={removeIngredient}
+                style={({ pressed }) => [styles.destructiveButton, pressed && styles.destructiveButtonPressed]}
+              >
                 <Text style={styles.destructiveButtonText}>Eliminar</Text>
               </Pressable>
             ) : null}
@@ -513,11 +525,14 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 Keyboard.dismiss();
                 setIngredientVisible(false);
               }}
-              style={styles.textAction}
+              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
             >
               <Text style={styles.textActionLabel}>Cancelar</Text>
             </Pressable>
-            <Pressable onPress={saveIngredient} style={styles.primaryAction}>
+            <Pressable
+              onPress={saveIngredient}
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            >
               <Text style={styles.primaryActionLabel}>Guardar</Text>
             </Pressable>
           </View>
@@ -547,11 +562,14 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 Keyboard.dismiss();
                 setNotesVisible(false);
               }}
-              style={styles.textAction}
+              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
             >
               <Text style={styles.textActionLabel}>Cancelar</Text>
             </Pressable>
-            <Pressable onPress={saveNotes} style={styles.primaryAction}>
+            <Pressable
+              onPress={saveNotes}
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            >
               <Text style={styles.primaryActionLabel}>Guardar</Text>
             </Pressable>
           </View>
@@ -640,11 +658,14 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 Keyboard.dismiss();
                 setScaleVisible(false);
               }}
-              style={styles.textAction}
+              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
             >
               <Text style={styles.textActionLabel}>Cancelar</Text>
             </Pressable>
-            <Pressable onPress={applyAdjustment} style={styles.primaryAction}>
+            <Pressable
+              onPress={applyAdjustment}
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            >
               <Text style={styles.primaryActionLabel}>Aplicar ajuste</Text>
             </Pressable>
           </View>
@@ -664,9 +685,10 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               <Pressable
                 key={item.id}
                 onPress={() => setSelectedPrefermentId(item.id)}
-                style={[
+                style={({ pressed }) => [
                   styles.prefermentOption,
-                  selectedPrefermentId === item.id && styles.prefermentOptionActive
+                  selectedPrefermentId === item.id && styles.prefermentOptionActive,
+                  pressed && styles.chipPressed
                 ]}
               >
                 <Text
@@ -709,11 +731,14 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 Keyboard.dismiss();
                 setPrefermentVisible(false);
               }}
-              style={styles.textAction}
+              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
             >
               <Text style={styles.textActionLabel}>Cancelar</Text>
             </Pressable>
-            <Pressable onPress={savePrefermentIngredient} style={styles.primaryAction}>
+            <Pressable
+              onPress={savePrefermentIngredient}
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            >
               <Text style={styles.primaryActionLabel}>Guardar</Text>
             </Pressable>
           </View>
@@ -752,7 +777,10 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 router.replace("/");
               }}
             />
-            <Pressable onPress={() => setMenuVisible(false)} style={styles.textAction}>
+            <Pressable
+              onPress={() => setMenuVisible(false)}
+              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+            >
               <Text style={styles.textActionLabel}>Cerrar</Text>
             </Pressable>
           </View>
@@ -800,7 +828,14 @@ function ChoiceButton({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.choiceButton, active && styles.choiceButtonActive]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.choiceButton,
+        active && styles.choiceButtonActive,
+        pressed && styles.chipPressed
+      ]}
+    >
       <Text style={[styles.choiceLabel, active && styles.choiceLabelActive]}>{label}</Text>
     </Pressable>
   );
@@ -821,22 +856,34 @@ function RoleChoiceButton({
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={[
+      style={({ pressed }) => [
         styles.roleChoiceButton,
-        { backgroundColor: appearance.background, borderColor: appearance.dot },
-        active && styles.roleChoiceButtonActive
+        { borderColor: active ? appearance.dot : theme.colors.border },
+        active && { backgroundColor: appearance.background },
+        pressed && styles.chipPressed
       ]}
     >
       <View style={[styles.roleChoiceDot, { backgroundColor: appearance.dot }]} />
-      <Text style={[styles.roleChoiceLabel, { color: appearance.text }]}>{label}</Text>
+      <Text style={[styles.roleChoiceLabel, { color: active ? appearance.text : theme.colors.textMuted }]}>
+        {label}
+      </Text>
+      {active ? <Text style={[styles.roleCheck, { color: appearance.text }]}>{"\u2713"}</Text> : null}
     </Pressable>
   );
 }
 
 function MenuAction({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={styles.menuAction}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.menuAction,
+        pressed && styles.menuActionPressed
+      ]}
+    >
       <Text style={styles.menuActionText}>{label}</Text>
     </Pressable>
   );
@@ -857,13 +904,24 @@ function ScaleOption({
 }) {
   return (
     <View style={styles.scaleOptionRow}>
-      <Pressable onPress={onPress} style={[styles.scaleOption, active && styles.scaleOptionActive]}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.scaleOption,
+          active && styles.scaleOptionActive,
+          pressed && styles.chipPressed
+        ]}
+      >
         <Text style={[styles.scaleOptionLabel, active && styles.scaleOptionLabelActive]}>{label}</Text>
       </Pressable>
       <Pressable
         accessibilityLabel={`Ayuda sobre ${label}`}
         onPress={onInfoPress}
-        style={[styles.helpButton, descriptionVisible && styles.helpButtonActive]}
+        style={({ pressed }) => [
+          styles.helpButton,
+          descriptionVisible && styles.helpButtonActive,
+          pressed && styles.chipPressed
+        ]}
       >
         <Text style={[styles.helpButtonText, descriptionVisible && styles.helpButtonTextActive]}>?</Text>
       </Pressable>
@@ -907,16 +965,16 @@ function InputWithSuffix({
 
 const styles = StyleSheet.create({
   container: {
-    gap: theme.spacing.md
+    gap: theme.spacing.sm
   },
   header: {
     backgroundColor: theme.colors.accentDeep,
     borderColor: "rgba(255, 249, 239, 0.18)",
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     elevation: 4,
     marginBottom: theme.spacing.xs,
-    marginHorizontal: 22,
+    marginHorizontal: 20,
     paddingHorizontal: theme.spacing.md,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 6 },
@@ -927,33 +985,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    minHeight: 64
+    minHeight: 56
   },
   headerLeft: {
     alignItems: "center",
     flex: 1,
     flexDirection: "row",
-    gap: theme.spacing.sm,
-    marginRight: theme.spacing.sm
+    gap: theme.spacing.xs,
+    marginRight: theme.spacing.xs
   },
   title: {
     color: "#F8F5F1",
     flex: 1,
     flexShrink: 1,
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: "800"
   },
   headerActions: {
     alignItems: "center",
     flexDirection: "row",
     flexShrink: 0,
-    gap: 2
+    gap: 4
   },
   iconButton: {
     alignItems: "center",
-    height: 32,
+    height: 34,
     justifyContent: "center",
-    width: 32
+    width: 34
+  },
+  iconButtonPressed: {
+    opacity: theme.interaction.pressedOpacity
   },
   iconText: {
     color: "#F8F5F1",
@@ -973,73 +1034,68 @@ const styles = StyleSheet.create({
   },
   metrics: {
     backgroundColor: theme.colors.surface,
-    borderBottomColor: theme.colors.border,
-    borderBottomWidth: 1,
-    borderColor: theme.colors.borderStrong,
-    borderLeftWidth: 1,
+    borderColor: theme.colors.border,
     borderRadius: theme.radius.sm,
-    borderRightWidth: 1,
-    borderTopColor: theme.colors.border,
-    borderTopWidth: 1,
+    borderWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 12
+    paddingVertical: 10
   },
   metric: {
     flex: 1
   },
   metricLabel: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
-    textTransform: "uppercase"
+    color: theme.colors.textSoft,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5
   },
   metricValue: {
     color: theme.colors.text,
     fontSize: 15,
-    fontWeight: "800"
+    fontWeight: "800",
+    marginTop: 2
   },
   statusRow: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.sm,
-    borderWidth: 1,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xxs
   },
   statusText: {
-    color: theme.colors.textMuted,
-    fontSize: 12
+    color: theme.colors.textSoft,
+    fontSize: 12,
+    fontWeight: "500"
   },
   ingredientsList: {
     gap: 0
   },
   modalBackdrop: {
-    backgroundColor: "rgba(47, 42, 38, 0.28)",
+    backgroundColor: "rgba(47, 42, 38, 0.32)",
     flex: 1,
     justifyContent: "flex-end"
   },
   centeredBackdrop: {
     alignItems: "center",
-    backgroundColor: "rgba(47, 42, 38, 0.28)",
+    backgroundColor: "rgba(47, 42, 38, 0.32)",
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: theme.spacing.md
   },
   centeredSheet: {
     backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.lg,
+    borderColor: theme.colors.border,
+    borderRadius: 20,
     borderWidth: 1,
     elevation: 6,
     maxHeight: "82%",
-    maxWidth: 560,
+    maxWidth: 480,
     padding: theme.spacing.lg,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    width: "90%"
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    width: "92%"
   },
   sheetScrollContent: {
     flexGrow: 1
@@ -1050,32 +1106,32 @@ const styles = StyleSheet.create({
   },
   menuSheet: {
     backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.borderStrong,
+    borderColor: theme.colors.border,
     borderTopWidth: 1,
-    borderTopLeftRadius: theme.radius.lg,
-    borderTopRightRadius: theme.radius.lg,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     gap: theme.spacing.xs,
     maxHeight: "70%",
     padding: theme.spacing.lg
   },
   sheetTitle: {
     color: theme.colors.text,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "800",
-    paddingBottom: 8
+    paddingBottom: 6
   },
   fieldLabel: {
-    color: theme.colors.text,
-    fontSize: 13,
+    color: theme.colors.textMuted,
+    fontSize: 12,
     fontWeight: "700"
   },
   field: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.sm,
+    backgroundColor: "#FFFDF8",
+    borderColor: theme.colors.border,
+    borderRadius: 12,
     borderWidth: 1,
     color: theme.colors.text,
-    minHeight: 46,
+    minHeight: 44,
     paddingHorizontal: 14
   },
   inputWithSuffix: {
@@ -1089,12 +1145,12 @@ const styles = StyleSheet.create({
   inputSuffix: {
     alignItems: "center",
     backgroundColor: theme.colors.surfaceMuted,
-    borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.sm,
+    borderColor: theme.colors.border,
+    borderRadius: 12,
     borderWidth: 1,
     justifyContent: "center",
-    minHeight: 46,
-    minWidth: 52,
+    minHeight: 44,
+    minWidth: 48,
     paddingHorizontal: 10
   },
   inputSuffixText: {
@@ -1103,13 +1159,13 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   notesField: {
-    minHeight: 140,
-    paddingVertical: 14
+    minHeight: 120,
+    paddingVertical: 12
   },
   helperText: {
-    color: theme.colors.textMuted,
-    fontSize: 13,
-    lineHeight: 20
+    color: theme.colors.textSoft,
+    fontSize: 12,
+    lineHeight: 18
   },
   inlineFields: {
     flexDirection: "row",
@@ -1125,47 +1181,46 @@ const styles = StyleSheet.create({
   },
   choiceButton: {
     backgroundColor: theme.colors.surfaceMuted,
-    borderBottomColor: theme.colors.border,
-    borderBottomWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8
   },
   choiceButtonActive: {
-    backgroundColor: theme.colors.accent,
-    borderBottomColor: theme.colors.accent
+    backgroundColor: theme.colors.accent
   },
   choiceLabel: {
     color: theme.colors.textMuted,
-    fontSize: 12
+    fontSize: 12,
+    fontWeight: "600"
   },
   choiceLabelActive: {
     color: "#F8F5F1",
     fontWeight: "700"
+  },
+  chipPressed: {
+    opacity: theme.interaction.pressedOpacity
   },
   roleChoiceButton: {
     alignItems: "center",
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 8
-  },
-  roleChoiceButtonActive: {
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4
+    paddingVertical: 7
   },
   roleChoiceDot: {
     borderRadius: 999,
-    height: 8,
-    width: 8
+    height: 7,
+    width: 7
   },
   roleChoiceLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700"
+  },
+  roleCheck: {
+    fontSize: 11,
+    fontWeight: "800"
   },
   scaleOptionRow: {
     alignItems: "center",
@@ -1179,7 +1234,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flex: 1,
     paddingHorizontal: 12,
-    paddingVertical: 10
+    paddingVertical: 9
   },
   scaleOptionActive: {
     backgroundColor: theme.colors.accent
@@ -1187,19 +1242,20 @@ const styles = StyleSheet.create({
   scaleOptionLabel: {
     color: theme.colors.text,
     fontSize: 13,
-    fontWeight: "700"
+    fontWeight: "600"
   },
   scaleOptionLabelActive: {
-    color: "#F8F5F1"
+    color: "#F8F5F1",
+    fontWeight: "700"
   },
   helpButton: {
     alignItems: "center",
-    borderColor: theme.colors.borderStrong,
+    borderColor: theme.colors.border,
     borderRadius: 999,
     borderWidth: 1,
-    height: 32,
+    height: 30,
     justifyContent: "center",
-    width: 32
+    width: 30
   },
   helpButtonActive: {
     backgroundColor: theme.colors.surfaceMuted
@@ -1221,8 +1277,11 @@ const styles = StyleSheet.create({
   },
   destructiveButton: {
     marginRight: "auto",
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 10
+  },
+  destructiveButtonPressed: {
+    opacity: theme.interaction.pressedOpacity
   },
   destructiveButtonText: {
     color: theme.colors.danger,
@@ -1230,8 +1289,11 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   textAction: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 10
+  },
+  textActionPressed: {
+    opacity: theme.interaction.pressedOpacity
   },
   textActionLabel: {
     color: theme.colors.textMuted,
@@ -1241,8 +1303,11 @@ const styles = StyleSheet.create({
   primaryAction: {
     backgroundColor: theme.colors.accentDeep,
     borderRadius: 999,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10
+  },
+  primaryActionPressed: {
+    opacity: theme.interaction.pressedOpacity
   },
   primaryActionLabel: {
     color: "#F8F5F1",
@@ -1252,16 +1317,20 @@ const styles = StyleSheet.create({
   menuAction: {
     borderBottomColor: theme.colors.border,
     borderBottomWidth: 1,
-    paddingVertical: 14
+    paddingVertical: 13
+  },
+  menuActionPressed: {
+    opacity: theme.interaction.pressedOpacity
   },
   menuActionText: {
     color: theme.colors.text,
-    fontSize: 15
+    fontSize: 15,
+    fontWeight: "600"
   },
   notesText: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 22,
+    color: theme.colors.textSoft,
+    fontSize: 13,
+    lineHeight: 20,
     paddingBottom: theme.spacing.sm
   },
   prefermentList: {
@@ -1270,7 +1339,7 @@ const styles = StyleSheet.create({
   prefermentOption: {
     borderBottomColor: theme.colors.border,
     borderBottomWidth: 1,
-    paddingVertical: 10
+    paddingVertical: 11
   },
   prefermentOptionActive: {
     borderBottomColor: theme.colors.accent,
@@ -1278,7 +1347,8 @@ const styles = StyleSheet.create({
   },
   prefermentName: {
     color: theme.colors.text,
-    fontSize: 14
+    fontSize: 14,
+    fontWeight: "600"
   },
   prefermentNameActive: {
     fontWeight: "800"

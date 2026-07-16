@@ -122,7 +122,10 @@ export default function HomeScreen() {
         </View>
       }
       overlay={
-        <Pressable onPress={() => setNewRecipeVisible(true)} style={styles.fab}>
+        <Pressable
+          onPress={() => setNewRecipeVisible(true)}
+          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+        >
           <View pointerEvents="none" style={styles.fabPatternWrap}>
             <Image resizeMode="cover" source={breadPattern} style={styles.fabPattern} />
           </View>
@@ -187,10 +190,16 @@ export default function HomeScreen() {
                 />
               </View>
               <View style={styles.modalActions}>
-                <Pressable onPress={closeNewRecipeModal} style={styles.textAction}>
+                <Pressable
+                  onPress={closeNewRecipeModal}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
                   <Text style={styles.textActionLabel}>Cancelar</Text>
                 </Pressable>
-                <Pressable onPress={handleCreateRecipe} style={styles.primaryAction}>
+                <Pressable
+                  onPress={handleCreateRecipe}
+                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                >
                   <Text style={styles.primaryActionLabel}>Guardar</Text>
                 </Pressable>
               </View>
@@ -306,6 +315,9 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 5
   },
+  fabPressed: {
+    opacity: theme.interaction.pressedOpacity
+  },
   fabPatternWrap: {
     ...StyleSheet.absoluteFill
   },
@@ -394,6 +406,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 10
   },
+  textActionPressed: {
+    opacity: theme.interaction.pressedOpacity
+  },
   textActionLabel: {
     color: theme.colors.textMuted,
     fontSize: 13,
@@ -404,6 +419,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 10
+  },
+  primaryActionPressed: {
+    opacity: theme.interaction.pressedOpacity
   },
   primaryActionLabel: {
     color: "#F8F5F1",
