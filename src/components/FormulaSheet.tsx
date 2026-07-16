@@ -24,6 +24,7 @@ import {
   getBakerPercentageFromQuantity,
   getDoughWeight,
   getHydrationPercentage,
+  getIngredientDisplayBreakdown,
   getMoistureIndex,
   getPrefermentBreakdown,
   getQuantityFromBakerPercentage,
@@ -426,18 +427,30 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       </View>
 
       <View style={styles.ingredientsList}>
-        {recipe.ingredients.map((ingredient) => (
-          <IngredientRow
-            ingredient={ingredient}
-            key={ingredient.id}
-            onPress={() => openEditIngredient(ingredient.id)}
-            prefermentBreakdown={getPrefermentBreakdown(
-              ingredient,
-              (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
-              recipe.id
-            )}
-          />
-        ))}
+        {recipe.ingredients.map((ingredient) => {
+          const displayBreakdown = getIngredientDisplayBreakdown(
+            ingredient,
+            recipe.ingredients,
+            (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
+            recipe.id
+          );
+
+          return (
+            <IngredientRow
+              ingredient={ingredient}
+              key={ingredient.id}
+              onPress={() => openEditIngredient(ingredient.id)}
+              prefermentBreakdown={getPrefermentBreakdown(
+                ingredient,
+                (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
+                recipe.id
+              )}
+              quantityDetail={displayBreakdown.detail}
+              quantityOverride={displayBreakdown.visibleQuantity}
+              quantityWarning={displayBreakdown.warning}
+            />
+          );
+        })}
       </View>
 
       <Modal
@@ -667,7 +680,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               </Pressable>
             ))}
             {!prefermentRecipes.length ? (
-              <Text style={styles.notesText}>No hay formulas marcadas como prefermento.</Text>
+              <Text style={styles.notesText}>No hay recetas marcadas como prefermento.</Text>
             ) : null}
           </View>
           <View style={styles.choiceRow}>
@@ -897,8 +910,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md
   },
   header: {
-    backgroundColor: theme.colors.accent,
-    borderColor: theme.colors.borderStrong,
+    backgroundColor: theme.colors.accentDeep,
+    borderColor: "rgba(255, 249, 239, 0.18)",
     borderRadius: 20,
     borderWidth: 1,
     elevation: 4,

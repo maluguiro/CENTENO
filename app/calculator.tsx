@@ -23,9 +23,9 @@ export default function CalculatorScreen() {
       header={
         <View style={styles.header}>
           <Text style={styles.eyebrow}>CALCULADORA</Text>
-          <Text style={styles.title}>Reescalar formulas rapido</Text>
+          <Text style={styles.title}>Reescalar recetas rapido</Text>
           <Text style={styles.subtitle}>
-            Pantalla minima para comparar formulas y recalcular desde la harina total.
+            Pantalla minima para comparar recetas y recalcular desde la harina total.
           </Text>
         </View>
       }
@@ -87,7 +87,7 @@ export default function CalculatorScreen() {
             </View>
           ))
         ) : (
-          <Text style={styles.emptyText}>No hay formulas para calcular.</Text>
+          <Text style={styles.emptyText}>No hay recetas para calcular.</Text>
         )}
       </View>
     </Screen>

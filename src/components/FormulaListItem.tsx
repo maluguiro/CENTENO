@@ -38,37 +38,43 @@ export function FormulaListItem({ recipe, onPress }: FormulaListItemProps) {
 
 const styles = StyleSheet.create({
   row: {
-    alignItems: "center",
     borderBottomColor: theme.colors.border,
     borderBottomWidth: 1,
     flexDirection: "row",
-    gap: theme.spacing.sm,
-    paddingVertical: 14
+    gap: theme.spacing.md,
+    minHeight: 76,
+    paddingVertical: 16
   },
   main: {
     flex: 1,
-    gap: 2
+    justifyContent: "center",
+    minHeight: 44
   },
   name: {
     color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: "700"
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 22
   },
   description: {
-    color: theme.colors.textSoft,
-    fontSize: 12
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4
   },
   meta: {
     alignItems: "flex-end",
-    minWidth: 62
+    justifyContent: "center",
+    minWidth: 74
   },
   value: {
-    color: theme.colors.accent,
-    fontSize: 14,
+    color: theme.colors.accentDeep,
+    fontSize: 16,
     fontWeight: "800"
   },
   label: {
     color: theme.colors.textMuted,
-    fontSize: 11
+    fontSize: 11,
+    marginTop: 3
   }
 });

@@ -10,11 +10,22 @@ type IngredientRowProps = {
   ingredient: RecipeIngredient & { scaledQuantity?: number };
   onPress?: () => void;
   prefermentBreakdown?: PrefermentBreakdown | null;
+  quantityDetail?: string | null;
+  quantityWarning?: string | null;
+  quantityOverride?: number | null;
 };
 
-export function IngredientRow({ ingredient, onPress, prefermentBreakdown }: IngredientRowProps) {
+export function IngredientRow({
+  ingredient,
+  onPress,
+  prefermentBreakdown,
+  quantityDetail,
+  quantityOverride,
+  quantityWarning
+}: IngredientRowProps) {
   const isPreferment = ingredient.role === "preferment";
   const roleAppearance = getIngredientRoleAppearance(ingredient.role);
+  const visibleQuantity = quantityOverride ?? ingredient.quantity;
 
   return (
     <Pressable onPress={onPress} style={styles.row}>
@@ -38,19 +49,9 @@ export function IngredientRow({ ingredient, onPress, prefermentBreakdown }: Ingr
             {prefermentBreakdown?.status === "resolved" ? (
               <>
                 <Text style={styles.prefermentText}>
-                  Formula: {prefermentBreakdown.linkedRecipeName}
-                </Text>
-                <Text style={styles.prefermentText}>
-                  Hidratacion: {prefermentBreakdown.originalHydration}%
-                </Text>
-                <Text style={styles.prefermentText}>
-                  Harina aportada: {prefermentBreakdown.contributedFlour} g
-                </Text>
-                <Text style={styles.prefermentText}>
-                  Agua aportada: {prefermentBreakdown.contributedLiquids} g
-                </Text>
-                <Text style={styles.prefermentText}>
-                  Peso original: {prefermentBreakdown.originalWeight} g
+                  Aporta: {prefermentBreakdown.contributedFlour} g harina ·{" "}
+                  {prefermentBreakdown.contributedLiquids} g agua ·{" "}
+                  {prefermentBreakdown.originalHydration}% hidratacion
                 </Text>
               </>
             ) : (
@@ -60,9 +61,13 @@ export function IngredientRow({ ingredient, onPress, prefermentBreakdown }: Ingr
             )}
           </View>
         ) : null}
+        {quantityDetail ? <Text style={styles.detailText}>{quantityDetail}</Text> : null}
+        {quantityWarning ? <Text style={styles.warningText}>{quantityWarning}</Text> : null}
       </View>
       <View style={styles.values}>
-        <Text style={styles.quantity}>{ingredient.quantity} {ingredient.unit}</Text>
+        <Text style={styles.quantity}>
+          {visibleQuantity} {ingredient.unit}
+        </Text>
       </View>
     </Pressable>
   );
@@ -128,6 +133,14 @@ const styles = StyleSheet.create({
   },
   prefermentText: {
     color: theme.colors.textSoft,
+    fontSize: 11
+  },
+  detailText: {
+    color: theme.colors.textSoft,
+    fontSize: 11
+  },
+  warningText: {
+    color: theme.colors.warning,
     fontSize: 11
   }
 });

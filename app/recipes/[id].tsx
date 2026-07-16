@@ -14,7 +14,7 @@ export default function RecipeDetailScreen() {
   if (!recipe) {
     return (
       <Screen>
-        <Text style={styles.title}>Formula no encontrada</Text>
+        <Text style={styles.title}>Receta no encontrada</Text>
       </Screen>
     );
   }

@@ -2,7 +2,6 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   Image,
-  ImageBackground,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -15,11 +14,14 @@ import {
   TextInput,
   View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FormulaListItem } from "@/components/FormulaListItem";
 import { Screen } from "@/components/Screen";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
+
+const breadPattern = require("../assets/branding/bread-pattern.png");
 
 function makeIngredient(
   id: string,
@@ -48,6 +50,7 @@ function getBaseRecipeIngredients() {
 }
 
 export default function HomeScreen() {
+  const insets = useSafeAreaInsets();
   const { createRecipe, recipes } = useRecipes();
   const [query, setQuery] = useState("");
   const [newRecipeVisible, setNewRecipeVisible] = useState(false);
@@ -95,31 +98,39 @@ export default function HomeScreen() {
 
   return (
     <Screen
+      headerVariant="bare"
       header={
         <View style={styles.header}>
-          <ImageBackground
-            imageStyle={styles.brandPatternImage}
-            resizeMode="repeat"
-            source={require("../assets/branding/bread-pattern.png")}
-            style={styles.brandCard}
+          <View
+            style={[
+              styles.brandCard,
+              {
+                marginTop: -(insets.top + theme.spacing.sm),
+                paddingTop: insets.top + 58
+              }
+            ]}
           >
+            <View pointerEvents="none" style={styles.brandPatternWrap}>
+              <Image resizeMode="repeat" source={breadPattern} style={styles.brandPattern} />
+            </View>
             <View style={styles.brandOverlay} />
-            <Text style={styles.brand}>CENTENO</Text>
-          </ImageBackground>
+            <View style={styles.brandCopy}>
+              <Text style={styles.brand}>CENTENO</Text>
+              <Text style={styles.brandSubtle}>Formulas panaderas para obrador</Text>
+            </View>
+          </View>
         </View>
       }
       overlay={
         <Pressable onPress={() => setNewRecipeVisible(true)} style={styles.fab}>
+          <View pointerEvents="none" style={styles.fabPatternWrap}>
+            <Image resizeMode="cover" source={breadPattern} style={styles.fabPattern} />
+          </View>
+          <View style={styles.fabOverlay} />
           <Text style={styles.fabText}>Nueva receta</Text>
         </Pressable>
       }
     >
-      <Image
-        resizeMode="repeat"
-        source={require("../assets/branding/bread-pattern.png")}
-        style={styles.backgroundPattern}
-      />
-
       <TextInput
         onChangeText={setQuery}
         placeholder="Buscar receta..."
@@ -137,7 +148,7 @@ export default function HomeScreen() {
           />
         ))}
         {!filteredRecipes.length ? (
-          <Text style={styles.empty}>No hay formulas para mostrar.</Text>
+          <Text style={styles.empty}>No hay recetas para mostrar.</Text>
         ) : null}
       </View>
 
@@ -193,53 +204,83 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    paddingBottom: theme.spacing.md
+    marginHorizontal: -theme.spacing.lg,
+    paddingBottom: theme.spacing.md,
+    paddingHorizontal: 0
   },
   brandCard: {
-    borderColor: "rgba(255,255,255,0.08)",
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    minHeight: 88,
+    backgroundColor: theme.colors.accentDeep,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    minHeight: 222,
     overflow: "hidden",
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.md
+    position: "relative",
+    paddingHorizontal: 24,
+    paddingTop: 26,
+    paddingBottom: 40,
+    shadowColor: "#2F241E",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 5
   },
-  brandPatternImage: {
-    opacity: 0.11
+  brandPatternWrap: {
+    ...StyleSheet.absoluteFill
+  },
+  brandPattern: {
+    bottom: 0,
+    height: "100%",
+    left: -96,
+    opacity: 0.2,
+    position: "absolute",
+    tintColor: "#F3E8D9",
+    top: 0,
+    width: "145%"
   },
   brandOverlay: {
-    backgroundColor: "rgba(90, 74, 63, 0.88)",
+    backgroundColor: "rgba(107, 78, 61, 0.18)",
     bottom: 0,
     left: 0,
     position: "absolute",
     right: 0,
     top: 0
+  },
+  brandCopy: {
+    flex: 1,
+    justifyContent: "flex-end",
+    gap: 12,
+    zIndex: 1
   },
   brand: {
-    color: "#F8F5F1",
-    fontSize: 26,
+    color: "#FFF9EF",
+    fontSize: 40,
     fontWeight: "900",
-    letterSpacing: 1.5
+    letterSpacing: 1.2
   },
-  backgroundPattern: {
-    bottom: 0,
-    left: 0,
-    opacity: 0.05,
-    position: "absolute",
-    right: 0,
-    top: 0
+  brandSubtle: {
+    color: "rgba(255, 249, 239, 0.78)",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginTop: 0
   },
   search: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.sm,
+    borderRadius: 18,
     borderWidth: 1,
     color: theme.colors.text,
-    minHeight: 48,
-    marginTop: theme.spacing.xs,
-    paddingHorizontal: 14
+    minHeight: 56,
+    marginTop: 2,
+    paddingHorizontal: 18,
+    shadowColor: "#6B4E3D",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 1
   },
   list: {
+    marginTop: theme.spacing.sm,
     paddingBottom: theme.spacing.xxl
   },
   empty: {
@@ -250,17 +291,47 @@ const styles = StyleSheet.create({
   fab: {
     alignItems: "center",
     backgroundColor: theme.colors.accentDeep,
-    borderColor: theme.colors.accent,
-    borderWidth: 1,
+    borderColor: "rgba(255, 249, 239, 0.18)",
+    borderWidth: 0.5,
     borderRadius: 999,
-    minWidth: 172,
-    paddingHorizontal: 24,
-    paddingVertical: 16
+    height: 56,
+    justifyContent: "center",
+    minWidth: 184,
+    overflow: "hidden",
+    paddingHorizontal: 28,
+    position: "relative",
+    shadowColor: "#2F241E",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 5
+  },
+  fabPatternWrap: {
+    ...StyleSheet.absoluteFill
+  },
+  fabPattern: {
+    bottom: 0,
+    height: "100%",
+    left: -28,
+    opacity: 0.2,
+    position: "absolute",
+    tintColor: "#F3E8D9",
+    top: 0,
+    width: "126%"
+  },
+  fabOverlay: {
+    backgroundColor: "rgba(90, 64, 50, 0.24)",
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
   },
   fabText: {
-    color: "#F8F5F1",
+    color: "#FFF9EF",
     fontSize: 15,
-    fontWeight: "800"
+    fontWeight: "800",
+    zIndex: 1
   },
   modalBackdrop: {
     alignItems: "center",
@@ -272,7 +343,7 @@ const styles = StyleSheet.create({
   modalCard: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.lg,
+    borderRadius: 28,
     borderWidth: 1,
     elevation: 6,
     maxWidth: 520,

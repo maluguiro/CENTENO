@@ -1,17 +1,17 @@
 export const theme = {
   colors: {
-    background: "#F3EFE7",
-    surface: "#FFFFFF",
-    surfaceElevated: "#FFFFFF",
-    surfaceMuted: "#E6DED3",
-    text: "#211C18",
-    textMuted: "#5F554D",
-    textSoft: "#8A8077",
-    accent: "#5A4A3F",
-    accentDeep: "#6B5748",
-    accentSoft: "#B8AA9B",
-    border: "#CFC4B7",
-    borderStrong: "#B8AA9B",
+    background: "#F7F2E7",
+    surface: "#F7F2E7",
+    surfaceElevated: "#F7F2E7",
+    surfaceMuted: "#E8DFC9",
+    text: "#2F241E",
+    textMuted: "#6C5B50",
+    textSoft: "#8C786B",
+    accent: "#A46A3C",
+    accentDeep: "#6B4E3D",
+    accentSoft: "#BDA58A",
+    border: "#E8DFC9",
+    borderStrong: "#BDA58A",
     water: "#6FA9BD",
     waterSoft: "#D9E8ED",
     success: "#6E8B61",
@@ -20,9 +20,9 @@ export const theme = {
   },
   radius: {
     xs: 8,
-    sm: 12,
-    md: 18,
-    lg: 24
+    sm: 16,
+    md: 24,
+    lg: 30
   },
   spacing: {
     xxs: 4,

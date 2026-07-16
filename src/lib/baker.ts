@@ -41,6 +41,20 @@ export type PrefermentBreakdown =
 
 type RecipeLookup = (recipeId: string) => Recipe | undefined;
 
+export type PrefermentContributionTotals = {
+  flour: number;
+  liquids: number;
+  warnings: string[];
+};
+
+export type IngredientDisplayBreakdown = {
+  totalRequired: number;
+  contributed: number;
+  visibleQuantity: number;
+  detail: string | null;
+  warning: string | null;
+};
+
 export function parseDecimalInput(value: string) {
   const normalized = value.trim().replace(",", ".");
   const parsed = Number(normalized);
@@ -366,6 +380,79 @@ export function getPrefermentBreakdown(
     contributedFlour: round(composition.flour * factor),
     contributedLiquids: round(composition.liquids * factor),
     contributedWeight: round(composition.doughWeight * factor)
+  };
+}
+
+export function getPrefermentContributionTotals(
+  ingredients: RecipeIngredient[],
+  recipeLookup: RecipeLookup,
+  parentRecipeId?: string
+): PrefermentContributionTotals {
+  return ingredients.reduce<PrefermentContributionTotals>(
+    (totals, ingredient) => {
+      const breakdown = getPrefermentBreakdown(ingredient, recipeLookup, parentRecipeId);
+
+      if (breakdown?.status !== "resolved") {
+        return totals;
+      }
+
+      return {
+        flour: round(totals.flour + breakdown.contributedFlour),
+        liquids: round(totals.liquids + breakdown.contributedLiquids),
+        warnings: totals.warnings
+      };
+    },
+    { flour: 0, liquids: 0, warnings: [] }
+  );
+}
+
+export function getIngredientDisplayBreakdown(
+  ingredient: RecipeIngredient,
+  ingredients: RecipeIngredient[],
+  recipeLookup: RecipeLookup,
+  parentRecipeId?: string
+): IngredientDisplayBreakdown {
+  const prefersFlour = ingredient.role === "flour";
+  const prefersLiquid = ingredient.role === "water";
+
+  if (!prefersFlour && !prefersLiquid) {
+    return {
+      totalRequired: ingredient.quantity,
+      contributed: 0,
+      visibleQuantity: ingredient.quantity,
+      detail: null,
+      warning: null
+    };
+  }
+
+  const contributions = getPrefermentContributionTotals(ingredients, recipeLookup, parentRecipeId);
+  const roleIngredients = ingredients.filter((item) => item.role === ingredient.role);
+  const totalRequiredForRole = round(
+    roleIngredients.reduce((total, item) => total + item.quantity, 0)
+  );
+  const totalContribution = prefersFlour ? contributions.flour : contributions.liquids;
+
+  if (totalRequiredForRole <= 0 || totalContribution <= 0) {
+    return {
+      totalRequired: ingredient.quantity,
+      contributed: 0,
+      visibleQuantity: ingredient.quantity,
+      detail: null,
+      warning: null
+    };
+  }
+
+  const contributionShare = round((totalContribution * ingredient.quantity) / totalRequiredForRole);
+  const actualContribution = round(contributionShare);
+  const visibleQuantity = round(Math.max(0, ingredient.quantity - contributionShare));
+  const exceeded = contributionShare > ingredient.quantity;
+
+  return {
+    totalRequired: ingredient.quantity,
+    contributed: actualContribution,
+    visibleQuantity,
+    detail: `[${round(ingredient.quantity)} - ${actualContribution}]`,
+    warning: exceeded ? "El prefermento excede el total calculado" : null
   };
 }
 

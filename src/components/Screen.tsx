@@ -11,15 +11,19 @@ import type { PropsWithChildren, ReactNode } from "react";
 import { theme } from "@/theme";
 
 type ScreenProps = PropsWithChildren<{
+  background?: ReactNode;
   header?: ReactNode;
+  headerVariant?: "solid" | "bare";
   overlay?: ReactNode;
   padded?: boolean;
   keyboardAware?: boolean;
 }>;
 
 export function Screen({
+  background,
   children,
   header,
+  headerVariant = "solid",
   overlay,
   padded = true,
   keyboardAware = false
@@ -27,6 +31,7 @@ export function Screen({
   const insets = useSafeAreaInsets();
   const content = (
     <View style={styles.body}>
+      {background ? <View pointerEvents="none" style={styles.backgroundLayer}>{background}</View> : null}
       <ScrollView
         contentContainerStyle={[styles.content, padded && styles.padded]}
         keyboardShouldPersistTaps="handled"
@@ -44,6 +49,7 @@ export function Screen({
         <View
           style={[
             styles.header,
+            headerVariant === "bare" && styles.headerBare,
             {
               paddingTop: insets.top + theme.spacing.sm
             }
@@ -78,11 +84,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.md
   },
+  headerBare: {
+    backgroundColor: "transparent",
+    borderBottomWidth: 0
+  },
   body: {
     flex: 1
   },
+  backgroundLayer: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0
+  },
   content: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: "transparent",
     gap: theme.spacing.md,
     paddingBottom: theme.spacing.xxl
   },

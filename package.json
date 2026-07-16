@@ -12,15 +12,15 @@
     "validate:baker": "tsx src/lib/baker.validation.ts"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "latest",
-    "expo": "latest",
-    "expo-dev-client": "~57.0.5",
-    "expo-linear-gradient": "latest",
-    "expo-router": "latest",
-    "expo-status-bar": "latest",
-    "react": "latest",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "~57.0.6",
+    "expo-dev-client": "~57.0.6",
+    "expo-linear-gradient": "~57.0.1",
+    "expo-router": "~57.0.6",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
     "react-native": "latest",
-    "react-native-safe-area-context": "latest",
+    "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "latest",
     "react-native-web": "latest"
   },

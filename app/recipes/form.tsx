@@ -62,7 +62,7 @@ export default function RecipeFormScreen() {
     );
 
     if (!name.trim()) {
-      Alert.alert("Falta el nombre", "La formula necesita un nombre.");
+      Alert.alert("Falta el nombre", "La receta necesita un nombre.");
       return;
     }
 
@@ -105,7 +105,7 @@ export default function RecipeFormScreen() {
       header={
         <View style={styles.header}>
           <Text style={styles.eyebrow}>{isEditing ? "EDITAR" : "NUEVA"}</Text>
-          <Text style={styles.title}>{isEditing ? "Editar formula" : "Crear formula"}</Text>
+          <Text style={styles.title}>{isEditing ? "Editar receta" : "Crear receta"}</Text>
         </View>
       }
     >
@@ -118,7 +118,7 @@ export default function RecipeFormScreen() {
       <View style={styles.section}>
         <TextInput
           onChangeText={setName}
-          placeholder="Nombre de la formula"
+          placeholder="Nombre de la receta"
           placeholderTextColor={theme.colors.textMuted}
           style={styles.input}
           value={name}
@@ -135,7 +135,7 @@ export default function RecipeFormScreen() {
           <View style={styles.switchCopy}>
             <Text style={styles.switchTitle}>Usar como prefermento</Text>
             <Text style={styles.switchHint}>
-              Permite elegir esta formula dentro de otra desde "Agregar prefermento".
+              Permite elegir esta receta dentro de otra desde "Agregar prefermento".
             </Text>
           </View>
           <Switch
@@ -180,7 +180,7 @@ export default function RecipeFormScreen() {
 
       <Pressable onPress={saveRecipe} style={styles.primaryButton}>
         <Text style={styles.primaryButtonText}>
-          {isEditing ? "Guardar cambios" : "Guardar formula"}
+          {isEditing ? "Guardar cambios" : "Guardar receta"}
         </Text>
       </Pressable>
     </Screen>

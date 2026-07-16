@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createContext,
   useContext,
@@ -13,6 +12,42 @@ import { sampleRecipes } from "@/data/sampleRecipes";
 import type { Recipe, RecipeDraft } from "@/types/recipe";
 
 const STORAGE_KEY = "centeno.recipes";
+
+type StorageLike = {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+};
+
+const memoryStorageState = new Map<string, string>();
+
+const memoryStorage: StorageLike = {
+  async getItem(key) {
+    return memoryStorageState.get(key) ?? null;
+  },
+  async setItem(key, value) {
+    memoryStorageState.set(key, value);
+  }
+};
+
+function getStorage(): StorageLike {
+  try {
+    const module = require("@react-native-async-storage/async-storage");
+    const asyncStorage = module?.default;
+
+    if (
+      asyncStorage &&
+      typeof asyncStorage.getItem === "function" &&
+      typeof asyncStorage.setItem === "function"
+    ) {
+      return asyncStorage as StorageLike;
+    }
+  } catch {
+  }
+
+  return memoryStorage;
+}
+
+const storage = getStorage();
 
 type RecipesState = {
   recipes: Recipe[];
@@ -80,7 +115,7 @@ export function RecipesProvider({ children }: PropsWithChildren) {
 
     async function loadRecipes() {
       try {
-        const storedValue = await AsyncStorage.getItem(STORAGE_KEY);
+        const storedValue = await storage.getItem(STORAGE_KEY);
         if (!storedValue) {
           return;
         }
@@ -109,7 +144,7 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state.recipes)).catch(() => {});
+    storage.setItem(STORAGE_KEY, JSON.stringify(state.recipes)).catch(() => {});
   }, [isReady, state.recipes]);
 
   const value = useMemo<RecipesContextValue>(() => {

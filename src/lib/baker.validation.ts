@@ -5,12 +5,14 @@ import {
   getBakerPercentageFromQuantity,
   getDoughWeight,
   getHydrationPercentage,
+  getIngredientDisplayBreakdown,
   getMoistureIndex,
   getPrefermentBreakdown,
   getQuantityFromBakerPercentage,
   getScaledDoughWeight,
   getTotalFats,
   getTotalFlour,
+  getTotalLiquids,
   getRecipeComposition,
   scaleByDoughWeight,
   scaleByTotalFlour,
@@ -201,6 +203,62 @@ function runPrefermentBreakdownCase() {
   });
 }
 
+function runPrefermentVisibleIngredientsCase() {
+  const poolish: Recipe = {
+    id: "poolish-600",
+    name: "Poolish focaccia",
+    description: "",
+    notes: "",
+    useAsPreferment: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ingredients: [
+      ingredient("poolish-flour", "Harina", 300, "flour", 100),
+      ingredient("poolish-water", "Agua", 300, "water", 100)
+    ]
+  };
+
+  const focacciaIngredients: RecipeIngredient[] = [
+    ingredient("flour", "Harina", 600, "flour", 100),
+    ingredient("water", "Agua", 390, "water", 65),
+    {
+      ...ingredient("poolish", "Poolish focaccia", 600, "preferment", 100),
+      linkedRecipeId: poolish.id,
+      linkedRecipeName: poolish.name
+    },
+    ingredient("oil", "Aceite", 30, "fat", 5),
+    ingredient("salt", "Sal", 12, "salt", 2)
+  ];
+
+  const lookup = (recipeId: string) => (recipeId === poolish.id ? poolish : undefined);
+
+  assertEqual(getHydrationPercentage(focacciaIngredients), 65);
+  assertEqual(getTotalFlour(focacciaIngredients), 600);
+  assertEqual(getTotalLiquids(focacciaIngredients), 390);
+
+  assertDeepEqual(
+    getIngredientDisplayBreakdown(focacciaIngredients[0], focacciaIngredients, lookup, "focaccia"),
+    {
+      totalRequired: 600,
+      contributed: 300,
+      visibleQuantity: 300,
+      detail: "[600 - 300]",
+      warning: null
+    }
+  );
+
+  assertDeepEqual(
+    getIngredientDisplayBreakdown(focacciaIngredients[1], focacciaIngredients, lookup, "focaccia"),
+    {
+      totalRequired: 390,
+      contributed: 300,
+      visibleQuantity: 90,
+      detail: "[390 - 300]",
+      warning: null
+    }
+  );
+}
+
 function runBaseRecipeCase() {
   const ingredients: RecipeIngredient[] = [
     ingredient("flour", "Harina", 500, "flour", 100),
@@ -257,6 +315,7 @@ export function runBakerValidation() {
   runScaleByDoughWeightCase();
   runScaleByYieldCase();
   runPrefermentBreakdownCase();
+  runPrefermentVisibleIngredientsCase();
   runBaseRecipeCase();
   runAdjustPercentageCase();
   runDecimalParsingCase();
