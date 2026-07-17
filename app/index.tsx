@@ -20,6 +20,7 @@ import { FormulaListItem } from "@/components/FormulaListItem";
 import { Screen } from "@/components/Screen";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
+import type { RecipeCategory } from "@/types/recipe";
 
 const breadPattern = require("../assets/branding/bread-pattern.png");
 
@@ -52,6 +53,7 @@ function getBaseRecipeIngredients() {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { createRecipe, recipes } = useRecipes();
+  const [categoryFilter, setCategoryFilter] = useState<RecipeCategory | "all">("all");
   const [query, setQuery] = useState("");
   const [newRecipeVisible, setNewRecipeVisible] = useState(false);
   const [newRecipeName, setNewRecipeName] = useState("");
@@ -59,18 +61,26 @@ export default function HomeScreen() {
 
   const filteredRecipes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return recipes;
-    }
 
-    return recipes.filter((recipe) => {
-      return [recipe.name, recipe.description, recipe.notes]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [query, recipes]);
+    return recipes
+      .filter((recipe) => {
+        const recipeCategory = recipe.category ?? "bakery";
+        if (categoryFilter === "pastry" && recipeCategory !== "pastry") {
+          return false;
+        }
+
+        if (!normalizedQuery) {
+          return true;
+        }
+
+        return [recipe.name, recipe.description, recipe.notes]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+  }, [categoryFilter, query, recipes]);
 
   function closeNewRecipeModal() {
     Keyboard.dismiss();
@@ -88,6 +98,7 @@ export default function HomeScreen() {
       name: newRecipeName,
       description: "",
       notes: "",
+      category: "bakery",
       useAsPreferment,
       ingredients: getBaseRecipeIngredients()
     });
@@ -114,6 +125,25 @@ export default function HomeScreen() {
               <Image resizeMode="repeat" source={breadPattern} style={styles.brandPattern} />
             </View>
             <View style={styles.brandOverlay} />
+            <Pressable
+              accessibilityLabel={
+                categoryFilter === "pastry" ? "Ver todas las recetas" : "Ver pasteleria"
+              }
+              onPress={() =>
+                setCategoryFilter((current) => (current === "pastry" ? "all" : "pastry"))
+              }
+              style={({ pressed }) => [
+                styles.filterButton,
+                styles.brandFilterButton,
+                { top: insets.top + 18 },
+                categoryFilter === "pastry" && styles.filterButtonActive,
+                pressed && styles.filterButtonPressed
+              ]}
+            >
+              <Text style={styles.filterButtonEmoji}>
+                {categoryFilter === "pastry" ? "\u{1F35E}" : "\u{1F9C1}"}
+              </Text>
+            </Pressable>
             <View style={styles.brandCopy}>
               <Text style={styles.brand}>CENTENO</Text>
               <Text style={styles.brandSubtle}>Formulas panaderas para obrador</Text>
@@ -151,7 +181,11 @@ export default function HomeScreen() {
           />
         ))}
         {!filteredRecipes.length ? (
-          <Text style={styles.empty}>No hay recetas para mostrar.</Text>
+          <Text style={styles.empty}>
+            {categoryFilter === "pastry"
+              ? "No hay recetas de pasteleria todavia."
+              : "No hay recetas para mostrar."}
+          </Text>
         ) : null}
       </View>
 
@@ -198,7 +232,10 @@ export default function HomeScreen() {
                 </Pressable>
                 <Pressable
                   onPress={handleCreateRecipe}
-                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                  style={({ pressed }) => [
+                    styles.primaryAction,
+                    pressed && styles.primaryActionPressed
+                  ]}
                 >
                   <Text style={styles.primaryActionLabel}>Guardar</Text>
                 </Pressable>
@@ -223,10 +260,10 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 0,
     minHeight: 222,
     overflow: "hidden",
-    position: "relative",
     paddingHorizontal: 24,
     paddingTop: 26,
     paddingBottom: 40,
+    position: "relative",
     shadowColor: "#2F241E",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.14,
@@ -291,6 +328,32 @@ const styles = StyleSheet.create({
   list: {
     marginTop: theme.spacing.sm,
     paddingBottom: theme.spacing.xxl
+  },
+  filterButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: "center",
+    width: 38
+  },
+  brandFilterButton: {
+    backgroundColor: "rgba(247, 242, 231, 0.16)",
+    borderColor: "rgba(247, 242, 231, 0.28)",
+    position: "absolute",
+    right: 24,
+    zIndex: 2
+  },
+  filterButtonActive: {
+    backgroundColor: theme.colors.surfaceMuted
+  },
+  filterButtonPressed: {
+    opacity: 0.82
+  },
+  filterButtonEmoji: {
+    fontSize: 18
   },
   empty: {
     color: theme.colors.textSoft,

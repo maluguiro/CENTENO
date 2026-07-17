@@ -8,7 +8,7 @@ import { Screen } from "@/components/Screen";
 import { getBasePercent, getDoughWeight, getHydrationPercent } from "@/lib/baker";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
-import type { RecipeIngredient } from "@/types/recipe";
+import type { RecipeCategory, RecipeIngredient } from "@/types/recipe";
 
 function emptyIngredient(): RecipeIngredient {
   return {
@@ -29,6 +29,7 @@ export default function RecipeFormScreen() {
   const [name, setName] = useState(existingRecipe?.name ?? "");
   const [description, setDescription] = useState(existingRecipe?.description ?? "");
   const [notes, setNotes] = useState(existingRecipe?.notes ?? "");
+  const [category, setCategory] = useState<RecipeCategory>(existingRecipe?.category ?? "bakery");
   const [useAsPreferment, setUseAsPreferment] = useState(existingRecipe?.useAsPreferment ?? false);
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>(
     existingRecipe?.ingredients ?? [emptyIngredient(), emptyIngredient()]
@@ -86,6 +87,7 @@ export default function RecipeFormScreen() {
       name,
       description,
       notes,
+      category,
       useAsPreferment,
       ingredients: normalizedIngredients
     };
@@ -131,6 +133,35 @@ export default function RecipeFormScreen() {
           style={[styles.input, styles.textArea]}
           value={description}
         />
+        <View style={styles.categoryGroup}>
+          <Text style={styles.sectionTitle}>Tipo de receta</Text>
+          <View style={styles.categoryRow}>
+            {[
+              { key: "bakery" as const, label: "Panaderia" },
+              { key: "pastry" as const, label: "Pasteleria" }
+            ].map((option) => {
+              const selected = category === option.key;
+
+              return (
+                <Pressable
+                  key={option.key}
+                  onPress={() => setCategory(option.key)}
+                  style={({ pressed }) => [
+                    styles.categoryButton,
+                    selected && styles.categoryButtonActive,
+                    pressed && styles.categoryButtonPressed
+                  ]}
+                >
+                  <Text
+                    style={[styles.categoryButtonText, selected && styles.categoryButtonTextActive]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
         <View style={styles.switchRow}>
           <View style={styles.switchCopy}>
             <Text style={styles.switchTitle}>Usar como prefermento</Text>
@@ -263,6 +294,40 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 14,
     paddingVertical: 12
+  },
+  categoryGroup: {
+    gap: theme.spacing.xs
+  },
+  categoryRow: {
+    flexDirection: "row",
+    gap: theme.spacing.sm
+  },
+  categoryButton: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  categoryButtonActive: {
+    backgroundColor: theme.colors.accentDeep,
+    borderColor: theme.colors.accentDeep
+  },
+  categoryButtonPressed: {
+    opacity: 0.82
+  },
+  categoryButtonText: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  categoryButtonTextActive: {
+    color: "#F8F5F1"
   },
   switchCopy: {
     flex: 1,

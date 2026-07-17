@@ -111,6 +111,7 @@ function getRecipeDraft(recipe: Recipe, ingredients: RecipeIngredient[], notes?:
     name: recipe.name,
     description: recipe.description ?? "",
     notes: notes ?? recipe.notes ?? "",
+    category: recipe.category ?? "bakery",
     useAsPreferment: recipe.useAsPreferment ?? false,
     ingredients
   };
@@ -293,6 +294,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       name: `${recipe.name} copia`,
       description: recipe.description ?? "",
       notes: recipe.notes ?? "",
+      category: recipe.category ?? "bakery",
       useAsPreferment: recipe.useAsPreferment ?? false,
       ingredients: recipe.ingredients.map((ingredient) => ({
         ...ingredient,

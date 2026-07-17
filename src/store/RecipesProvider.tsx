@@ -9,7 +9,7 @@ import {
 } from "react";
 
 import { sampleRecipes } from "@/data/sampleRecipes";
-import type { Recipe, RecipeDraft } from "@/types/recipe";
+import type { Recipe, RecipeCategory, RecipeDraft } from "@/types/recipe";
 
 const STORAGE_KEY = "centeno.recipes";
 
@@ -74,12 +74,23 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function normalizeCategory(category?: RecipeCategory) {
+  return category === "pastry" ? "pastry" : "bakery";
+}
+
+function normalizeRecipe(recipe: Recipe): Recipe {
+  return {
+    ...recipe,
+    category: normalizeCategory(recipe.category)
+  };
+}
+
 function recipesReducer(state: RecipesState, action: RecipesAction): RecipesState {
   switch (action.type) {
     case "hydrate":
-      return { recipes: action.payload };
+      return { recipes: action.payload.map(normalizeRecipe) };
     case "create": {
-      return { recipes: [action.payload, ...state.recipes] };
+      return { recipes: [normalizeRecipe(action.payload), ...state.recipes] };
     }
     case "update":
       return {
@@ -90,6 +101,7 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
                 name: action.payload.draft.name.trim(),
                 description: action.payload.draft.description.trim(),
                 notes: action.payload.draft.notes.trim(),
+                category: normalizeCategory(action.payload.draft.category),
                 useAsPreferment: action.payload.draft.useAsPreferment,
                 ingredients: action.payload.draft.ingredients,
                 updatedAt: new Date().toISOString()
@@ -107,7 +119,9 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
 }
 
 export function RecipesProvider({ children }: PropsWithChildren) {
-  const [state, dispatch] = useReducer(recipesReducer, { recipes: sampleRecipes });
+  const [state, dispatch] = useReducer(recipesReducer, {
+    recipes: sampleRecipes.map(normalizeRecipe)
+  });
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -158,6 +172,7 @@ export function RecipesProvider({ children }: PropsWithChildren) {
           name: draft.name.trim(),
           description: draft.description.trim(),
           notes: draft.notes.trim(),
+          category: normalizeCategory(draft.category),
           useAsPreferment: draft.useAsPreferment,
           ingredients: draft.ingredients.map((ingredient) => ({
             ...ingredient,

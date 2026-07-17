@@ -1,4 +1,5 @@
 export type IngredientUnit = "g" | "kg" | "ml" | "l" | "unit";
+export type RecipeCategory = "bakery" | "pastry";
 
 export type IngredientRole =
   | "flour"
@@ -27,6 +28,7 @@ export type Recipe = {
   name: string;
   description?: string;
   notes?: string;
+  category?: RecipeCategory;
   useAsPreferment?: boolean;
   ingredients: RecipeIngredient[];
   createdAt: string;
@@ -37,6 +39,7 @@ export type RecipeDraft = {
   name: string;
   description: string;
   notes: string;
+  category: RecipeCategory;
   useAsPreferment: boolean;
   ingredients: RecipeIngredient[];
 };

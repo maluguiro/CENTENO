@@ -6,6 +6,7 @@ export const sampleRecipes: Recipe[] = [
     name: "Pan de campo",
     description: "Masa madre suave con hidratacion intermedia para hornos domesticos.",
     notes: "Version inicial para validar calculos y escalado local.",
+    category: "bakery",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ingredients: [
@@ -48,6 +49,7 @@ export const sampleRecipes: Recipe[] = [
     name: "Focaccia",
     description: "Formula alta en hidratacion, aceite de oliva y fermentacion en frio.",
     notes: "Usa aceite como ingrediente de formula, no cuenta como hidratacion.",
+    category: "bakery",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ingredients: [
