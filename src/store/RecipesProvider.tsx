@@ -39,11 +39,17 @@ function getStorage(): StorageLike {
       typeof asyncStorage.getItem === "function" &&
       typeof asyncStorage.setItem === "function"
     ) {
+      if (__DEV__) {
+        console.log("[CENTENO] storage: AsyncStorage OK");
+      }
       return asyncStorage as StorageLike;
     }
   } catch {
   }
 
+  if (__DEV__) {
+    console.warn("[CENTENO] storage: AsyncStorage unavailable, falling back to memory");
+  }
   return memoryStorage;
 }
 
@@ -131,14 +137,23 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       try {
         const storedValue = await storage.getItem(STORAGE_KEY);
         if (!storedValue) {
+          if (__DEV__) {
+            console.log("[CENTENO] storage: no stored recipes, using sampleRecipes");
+          }
           return;
         }
 
         const parsed = JSON.parse(storedValue) as Recipe[];
+        if (__DEV__) {
+          console.log("[CENTENO] storage: loaded", parsed.length, "recipes from", STORAGE_KEY);
+        }
         if (isMounted) {
           dispatch({ type: "hydrate", payload: parsed });
         }
-      } catch {
+      } catch (error) {
+        if (__DEV__) {
+          console.error("[CENTENO] storage: parse error, keeping sampleRecipes", error);
+        }
       } finally {
         if (isMounted) {
           setIsReady(true);
@@ -158,7 +173,14 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    storage.setItem(STORAGE_KEY, JSON.stringify(state.recipes)).catch(() => {});
+    if (__DEV__) {
+      console.log("[CENTENO] storage: persisting", state.recipes.length, "recipes");
+    }
+    storage.setItem(STORAGE_KEY, JSON.stringify(state.recipes)).catch((error) => {
+      if (__DEV__) {
+        console.error("[CENTENO] storage: persist failed", error);
+      }
+    });
   }, [isReady, state.recipes]);
 
   const value = useMemo<RecipesContextValue>(() => {
