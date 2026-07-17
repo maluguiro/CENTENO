@@ -9,24 +9,27 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "validate:baker": "tsx src/lib/baker.validation.ts"
+    "validate:baker": "tsx src/lib/baker.validation.ts",
+    "validate:recipes": "tsx src/lib/recipeImportExport.validation.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.6",
+    "expo-clipboard": "^57.0.1",
     "expo-dev-client": "~57.0.6",
     "expo-linear-gradient": "~57.0.1",
     "expo-router": "~57.0.6",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
-    "react-native": "latest",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.0",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "latest",
-    "react-native-web": "latest"
+    "react-native-screens": "4.25.2",
+    "react-native-web": "0.21.2"
   },
   "devDependencies": {
-    "@types/react": "latest",
-    "tsx": "latest",
-    "typescript": "latest"
+    "@types/react": "19.2.17",
+    "tsx": "4.23.0",
+    "typescript": "6.0.3"
   }
 }

@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useMemo, useState, type ReactNode } from "react";
 import {
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -16,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HydrationBar } from "@/components/HydrationBar";
 import { IngredientRow } from "@/components/IngredientRow";
+import { setClipboardText } from "@/lib/clipboard";
 import {
   applyScaleByDoughWeight,
   applyScaleByTotalFlour,
@@ -33,6 +35,8 @@ import {
   parseDecimalInput
 } from "@/lib/baker";
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
+import { exportRecipeToJson } from "@/lib/recipeImportExport";
+import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
 import type { IngredientRole, IngredientUnit, Recipe, RecipeDraft, RecipeIngredient } from "@/types/recipe";
@@ -40,6 +44,7 @@ import type { IngredientRole, IngredientUnit, Recipe, RecipeDraft, RecipeIngredi
 type ScaleMode = "flour" | "dough" | "yield";
 type PrefermentMode = "grams" | "percent";
 type IngredientField = "quantity" | "percentage" | null;
+type ExportMode = "selector" | "shareText" | "importCode" | null;
 
 const roles: IngredientRole[] = [
   "flour",
@@ -123,6 +128,10 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [scaleVisible, setScaleVisible] = useState(false);
   const [notesVisible, setNotesVisible] = useState(false);
+  const [exportMode, setExportMode] = useState<ExportMode>(null);
+  const [exportJson, setExportJson] = useState("");
+  const [shareText, setShareText] = useState("");
+  const [copyFeedback, setCopyFeedback] = useState<"shareText" | "importCode" | null>(null);
   const [ingredientVisible, setIngredientVisible] = useState(false);
   const [prefermentVisible, setPrefermentVisible] = useState(false);
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
@@ -309,6 +318,28 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   function openNotesModal() {
     setNotesDraft(recipe.notes ?? "");
     setNotesVisible(true);
+  }
+
+  function openExportModal() {
+    setExportJson(exportRecipeToJson(recipe));
+    setShareText(formatRecipeAsShareText(recipe, recipes));
+    setCopyFeedback(null);
+    setExportMode("selector");
+    setMenuVisible(false);
+  }
+
+  async function handleCopyExport(value: string, modeValue: "shareText" | "importCode") {
+    const copied = await setClipboardText(value);
+
+    if (!copied) {
+      Alert.alert("El portapapeles no esta disponible en esta build.");
+      return;
+    }
+
+    setCopyFeedback(modeValue);
+    setTimeout(() => {
+      setCopyFeedback((current) => (current === modeValue ? null : current));
+    }, 1500);
   }
 
   function saveNotes() {
@@ -580,6 +611,140 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
 
       <Modal
         animationType="fade"
+        onRequestClose={() => setExportMode(null)}
+        transparent
+        visible={exportMode !== null}
+      >
+        <CenteredModalSheet>
+          {exportMode === "selector" ? (
+            <>
+              <Text style={styles.sheetTitle}>Exportar receta</Text>
+              <Text style={styles.helperText}>
+                Elegi como queres compartir esta receta.
+              </Text>
+              <Pressable
+                onPress={() => setExportMode("shareText")}
+                style={({ pressed }) => [
+                  styles.exportOption,
+                  pressed && styles.menuActionPressed
+                ]}
+              >
+                <Text style={styles.exportOptionTitle}>Compartir como texto</Text>
+                <Text style={styles.exportOptionDescription}>
+                  Para WhatsApp, notas o imprimir.
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setExportMode("importCode")}
+                style={({ pressed }) => [
+                  styles.exportOption,
+                  pressed && styles.menuActionPressed
+                ]}
+              >
+                <Text style={styles.exportOptionTitle}>Codigo para importar</Text>
+                <Text style={styles.exportOptionDescription}>
+                  Para cargar esta receta en otro CENTENO.
+                </Text>
+              </Pressable>
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={() => setExportMode(null)}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+
+          {exportMode === "shareText" ? (
+            <>
+              <Text style={styles.sheetTitle}>Compartir como texto</Text>
+              <Text style={styles.helperText}>
+                Copia esta receta para enviarla por WhatsApp o guardarla en notas.
+              </Text>
+              <TextInput
+                multiline
+                editable
+                placeholderTextColor={theme.colors.textMuted}
+                style={[styles.field, styles.exportField]}
+                textAlignVertical="top"
+                value={shareText}
+              />
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={() => handleCopyExport(shareText, "shareText")}
+                  style={({ pressed }) => [
+                    styles.secondaryAction,
+                    pressed && styles.secondaryActionPressed
+                  ]}
+                >
+                  <Text style={styles.secondaryActionLabel}>
+                    {copyFeedback === "shareText" ? "Copiado ✓" : "Copiar"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setExportMode("selector")}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Volver</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setExportMode(null)}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+
+          {exportMode === "importCode" ? (
+            <>
+              <Text style={styles.sheetTitle}>Codigo para importar</Text>
+              <Text style={styles.helperText}>
+                Copia este codigo para cargar la receta en otro CENTENO.
+              </Text>
+              <TextInput
+                multiline
+                editable
+                placeholderTextColor={theme.colors.textMuted}
+                style={[styles.field, styles.exportField]}
+                textAlignVertical="top"
+                value={exportJson}
+              />
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={() => handleCopyExport(exportJson, "importCode")}
+                  style={({ pressed }) => [
+                    styles.secondaryAction,
+                    pressed && styles.secondaryActionPressed
+                  ]}
+                >
+                  <Text style={styles.secondaryActionLabel}>
+                    {copyFeedback === "importCode" ? "Copiado ✓" : "Copiar"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setExportMode("selector")}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Volver</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setExportMode(null)}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+        </CenteredModalSheet>
+      </Modal>
+
+      <Modal
+        animationType="fade"
         onRequestClose={() => setScaleVisible(false)}
         transparent
         visible={scaleVisible}
@@ -764,6 +929,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             />
             <MenuAction label="Agregar prefermento" onPress={openPrefermentModal} />
             <MenuAction label="Duplicar receta" onPress={duplicateRecipe} />
+            <MenuAction label="Exportar receta" onPress={openExportModal} />
             <MenuAction
               label="Editar datos de receta"
               onPress={() => {
@@ -1164,6 +1330,29 @@ const styles = StyleSheet.create({
     minHeight: 120,
     paddingVertical: 12
   },
+  exportField: {
+    minHeight: 220,
+    paddingVertical: 12
+  },
+  exportOption: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 14
+  },
+  exportOptionTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  exportOptionDescription: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18
+  },
   helperText: {
     color: theme.colors.textSoft,
     fontSize: 12,
@@ -1301,6 +1490,22 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 13,
     fontWeight: "700"
+  },
+  secondaryAction: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  secondaryActionPressed: {
+    opacity: theme.interaction.pressedOpacity
+  },
+  secondaryActionLabel: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "800"
   },
   primaryAction: {
     backgroundColor: theme.colors.accentDeep,

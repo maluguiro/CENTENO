@@ -12,6 +12,8 @@ import { sampleRecipes } from "@/data/sampleRecipes";
 import type { Recipe, RecipeCategory, RecipeDraft } from "@/types/recipe";
 
 const STORAGE_KEY = "centeno.recipes";
+const isDev =
+  typeof __DEV__ !== "undefined" ? __DEV__ : process.env.NODE_ENV !== "production";
 
 type StorageLike = {
   getItem: (key: string) => Promise<string | null>;
@@ -39,7 +41,7 @@ function getStorage(): StorageLike {
       typeof asyncStorage.getItem === "function" &&
       typeof asyncStorage.setItem === "function"
     ) {
-      if (__DEV__) {
+      if (isDev) {
         console.log("[CENTENO] storage: AsyncStorage OK");
       }
       return asyncStorage as StorageLike;
@@ -47,7 +49,7 @@ function getStorage(): StorageLike {
   } catch {
   }
 
-  if (__DEV__) {
+  if (isDev) {
     console.warn("[CENTENO] storage: AsyncStorage unavailable, falling back to memory");
   }
   return memoryStorage;
@@ -62,6 +64,9 @@ type RecipesState = {
 type RecipesAction =
   | { type: "hydrate"; payload: Recipe[] }
   | { type: "create"; payload: Recipe }
+  | { type: "import"; payload: Recipe }
+  | { type: "restoreSamples"; payload: Recipe[] }
+  | { type: "deleteAll" }
   | { type: "update"; payload: { id: string; draft: RecipeDraft } }
   | { type: "delete"; payload: { id: string } };
 
@@ -69,6 +74,9 @@ type RecipesContextValue = {
   recipes: Recipe[];
   isReady: boolean;
   createRecipe: (draft: RecipeDraft) => string;
+  importRecipe: (recipe: Recipe) => string;
+  restoreSampleRecipes: () => void;
+  deleteAllRecipes: () => void;
   updateRecipe: (id: string, draft: RecipeDraft) => void;
   deleteRecipe: (id: string) => void;
   getRecipeById: (id: string) => Recipe | undefined;
@@ -91,6 +99,24 @@ function normalizeRecipe(recipe: Recipe): Recipe {
   };
 }
 
+function normalizeNameKey(value: string) {
+  return value.trim().toLocaleLowerCase("es");
+}
+
+export function mergeMissingSampleRecipes(existingRecipes: Recipe[], incomingSamples: Recipe[]) {
+  const existingIds = new Set(existingRecipes.map((recipe) => recipe.id));
+  const existingNames = new Set(existingRecipes.map((recipe) => normalizeNameKey(recipe.name)));
+
+  const missingSamples = incomingSamples
+    .map(normalizeRecipe)
+    .filter(
+      (sample) =>
+        !existingIds.has(sample.id) && !existingNames.has(normalizeNameKey(sample.name))
+    );
+
+  return [...existingRecipes, ...missingSamples];
+}
+
 function recipesReducer(state: RecipesState, action: RecipesAction): RecipesState {
   switch (action.type) {
     case "hydrate":
@@ -98,6 +124,16 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
     case "create": {
       return { recipes: [normalizeRecipe(action.payload), ...state.recipes] };
     }
+    case "import": {
+      return { recipes: [normalizeRecipe(action.payload), ...state.recipes] };
+    }
+    case "restoreSamples": {
+      return {
+        recipes: mergeMissingSampleRecipes(state.recipes, action.payload)
+      };
+    }
+    case "deleteAll":
+      return { recipes: [] };
     case "update":
       return {
         recipes: state.recipes.map((recipe) =>
@@ -137,21 +173,21 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       try {
         const storedValue = await storage.getItem(STORAGE_KEY);
         if (!storedValue) {
-          if (__DEV__) {
+          if (isDev) {
             console.log("[CENTENO] storage: no stored recipes, using sampleRecipes");
           }
           return;
         }
 
         const parsed = JSON.parse(storedValue) as Recipe[];
-        if (__DEV__) {
+        if (isDev) {
           console.log("[CENTENO] storage: loaded", parsed.length, "recipes from", STORAGE_KEY);
         }
         if (isMounted) {
           dispatch({ type: "hydrate", payload: parsed });
         }
       } catch (error) {
-        if (__DEV__) {
+        if (isDev) {
           console.error("[CENTENO] storage: parse error, keeping sampleRecipes", error);
         }
       } finally {
@@ -173,11 +209,11 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    if (__DEV__) {
+    if (isDev) {
       console.log("[CENTENO] storage: persisting", state.recipes.length, "recipes");
     }
     storage.setItem(STORAGE_KEY, JSON.stringify(state.recipes)).catch((error) => {
-      if (__DEV__) {
+      if (isDev) {
         console.error("[CENTENO] storage: persist failed", error);
       }
     });
@@ -210,6 +246,23 @@ export function RecipesProvider({ children }: PropsWithChildren) {
         });
 
         return recipe.id;
+      },
+      importRecipe: (recipe) => {
+        dispatch({
+          type: "import",
+          payload: recipe
+        });
+
+        return recipe.id;
+      },
+      restoreSampleRecipes: () => {
+        dispatch({
+          type: "restoreSamples",
+          payload: sampleRecipes
+        });
+      },
+      deleteAllRecipes: () => {
+        dispatch({ type: "deleteAll" });
       },
       updateRecipe: (id, draft) => {
         dispatch({
