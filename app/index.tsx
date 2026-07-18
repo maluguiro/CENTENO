@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -18,7 +18,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FormulaListItem } from "@/components/FormulaListItem";
+import {
+  GuideModal,
+  type GuideTargetKey,
+  type GuideTargetRect
+} from "@/components/GuideModal";
 import { setClipboardText } from "@/lib/clipboard";
+import { getGuideSeen, setGuideSeen } from "@/lib/guideStorage";
 import { exportRecipeToJson } from "@/lib/recipeImportExport";
 import { getClipboardText } from "@/lib/clipboard";
 import {
@@ -89,6 +95,7 @@ export default function HomeScreen() {
     deleteAllRecipes,
     deleteRecipe,
     importRecipe,
+    isReady,
     recipes,
     restoreSampleRecipes,
     updateRecipe
@@ -111,6 +118,80 @@ export default function HomeScreen() {
   const [newRecipeVisible, setNewRecipeVisible] = useState(false);
   const [newRecipeName, setNewRecipeName] = useState("");
   const [useAsPreferment, setUseAsPreferment] = useState(false);
+  const [guideVisible, setGuideVisible] = useState(false);
+  const [guideStepIndex, setGuideStepIndex] = useState(0);
+  const [guideChecked, setGuideChecked] = useState(false);
+  const [guideTargetRects, setGuideTargetRects] = useState<
+    Partial<Record<GuideTargetKey, GuideTargetRect>>
+  >({});
+  const brandHeaderRef = useRef<View>(null);
+  const categoryFilterRef = useRef<View>(null);
+  const settingsButtonRef = useRef<View>(null);
+  const searchRef = useRef<View>(null);
+  const recipeListRef = useRef<View>(null);
+  const newRecipeFabRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (!isReady || guideChecked) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadGuideState() {
+      const seen = await getGuideSeen();
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (!seen) {
+        setGuideStepIndex(0);
+        setGuideVisible(true);
+      }
+
+      setGuideChecked(true);
+    }
+
+    loadGuideState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [guideChecked, isReady]);
+
+  function measureGuideTargets() {
+    const refs: Array<[GuideTargetKey, typeof brandHeaderRef]> = [
+      ["brandHeader", brandHeaderRef],
+      ["categoryFilter", categoryFilterRef],
+      ["settingsButton", settingsButtonRef],
+      ["recipeList", recipeListRef],
+      ["newRecipeFab", newRecipeFabRef]
+    ];
+
+    refs.forEach(([key, ref]) => {
+      ref.current?.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) {
+          setGuideTargetRects((current) => ({
+            ...current,
+            [key]: { x, y, width, height }
+          }));
+        }
+      });
+    });
+  }
+
+  useEffect(() => {
+    if (!guideVisible) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      measureGuideTargets();
+    }, 60);
+
+    return () => clearTimeout(timer);
+  }, [guideStepIndex, guideVisible, recipes.length, settingsVisible]);
 
   const filteredRecipes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -154,6 +235,27 @@ export default function HomeScreen() {
     setImportError("");
     setImportInput("");
     setImportPasteFeedback("");
+  }
+
+  function closeGuideModal() {
+    setGuideVisible(false);
+    setGuideStepIndex(0);
+  }
+
+  async function completeGuide() {
+    await setGuideSeen();
+    closeGuideModal();
+  }
+
+  async function skipGuide() {
+    await setGuideSeen();
+    closeGuideModal();
+  }
+
+  function openGuideFromSettings() {
+    setSettingsVisible(false);
+    setGuideStepIndex(0);
+    setGuideVisible(true);
   }
 
   function showImportPasteFeedback(message: string) {
@@ -382,6 +484,8 @@ export default function HomeScreen() {
       header={
         <View style={styles.header}>
           <View
+            onLayout={measureGuideTargets}
+            ref={brandHeaderRef}
             style={[
               styles.brandCard,
               {
@@ -394,37 +498,47 @@ export default function HomeScreen() {
               <Image resizeMode="repeat" source={breadPattern} style={styles.brandPattern} />
             </View>
             <View style={styles.brandOverlay} />
-            <Pressable
-              accessibilityLabel={
-                categoryFilter === "pastry" ? "Ver todas las recetas" : "Ver pasteleria"
-              }
-              onPress={() =>
-                setCategoryFilter((current) => (current === "pastry" ? "all" : "pastry"))
-              }
-              style={({ pressed }) => [
-                styles.filterButton,
-                styles.brandFilterButton,
-                { top: insets.top + 40 },
-                categoryFilter === "pastry" && styles.filterButtonActive,
-                pressed && styles.filterButtonPressed
-              ]}
+            <View
+              onLayout={measureGuideTargets}
+              ref={categoryFilterRef}
+              style={[styles.guideAnchor, styles.brandFilterAnchor, { top: insets.top + 40 }]}
             >
-              <Text style={styles.filterButtonEmoji}>
-                {categoryFilter === "pastry" ? "\u{1F35E}" : "\u{1F9C1}"}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="Abrir herramientas"
-              onPress={() => setSettingsVisible(true)}
-              style={({ pressed }) => [
-                styles.settingsButton,
-                styles.brandSettingsButton,
-                { top: insets.top + 92 },
-                pressed && styles.fabPressed
-              ]}
+              <Pressable
+                accessibilityLabel={
+                  categoryFilter === "pastry" ? "Ver todas las recetas" : "Ver pasteleria"
+                }
+                onPress={() =>
+                  setCategoryFilter((current) => (current === "pastry" ? "all" : "pastry"))
+                }
+                style={({ pressed }) => [
+                  styles.filterButton,
+                  styles.brandFilterButton,
+                  categoryFilter === "pastry" && styles.filterButtonActive,
+                  pressed && styles.filterButtonPressed
+                ]}
+              >
+                <Text style={styles.filterButtonEmoji}>
+                  {categoryFilter === "pastry" ? "\u{1F35E}" : "\u{1F9C1}"}
+                </Text>
+              </Pressable>
+            </View>
+            <View
+              onLayout={measureGuideTargets}
+              ref={settingsButtonRef}
+              style={[styles.guideAnchor, styles.brandSettingsAnchor, { top: insets.top + 92 }]}
             >
-              <Text style={styles.settingsIcon}>{"\u2699"}</Text>
-            </Pressable>
+              <Pressable
+                accessibilityLabel="Abrir herramientas"
+                onPress={() => setSettingsVisible(true)}
+                style={({ pressed }) => [
+                  styles.settingsButton,
+                  styles.brandSettingsButton,
+                  pressed && styles.fabPressed
+                ]}
+              >
+                <Text style={styles.settingsIcon}>{"\u2699"}</Text>
+              </Pressable>
+            </View>
             <View style={styles.brandCopy}>
               <Text style={styles.brand}>CENTENO</Text>
               <Text style={styles.brandSubtle}>Formulas panaderas para obrador</Text>
@@ -434,27 +548,31 @@ export default function HomeScreen() {
       }
       overlay={
         <View style={styles.overlayStack}>
-          <Pressable
-            onPress={() => setNewRecipeVisible(true)}
-            style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-          >
-            <View pointerEvents="none" style={styles.fabPatternWrap}>
-              <Image resizeMode="cover" source={breadPattern} style={styles.fabPattern} />
-            </View>
-            <View style={styles.fabOverlay} />
-            <Text style={styles.fabText}>Nueva receta</Text>
-          </Pressable>
+          <View onLayout={measureGuideTargets} ref={newRecipeFabRef}>
+            <Pressable
+              onPress={() => setNewRecipeVisible(true)}
+              style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+            >
+              <View pointerEvents="none" style={styles.fabPatternWrap}>
+                <Image resizeMode="cover" source={breadPattern} style={styles.fabPattern} />
+              </View>
+              <View style={styles.fabOverlay} />
+              <Text style={styles.fabText}>Nueva receta</Text>
+            </Pressable>
+          </View>
         </View>
       }
     >
-      <TextInput
-        onChangeText={setQuery}
-        placeholder="Buscar receta..."
-        placeholderTextColor={theme.colors.textMuted}
-        style={styles.search}
-        value={query}
-      />
-      <View style={styles.list}>
+      <View onLayout={measureGuideTargets} ref={searchRef}>
+        <TextInput
+          onChangeText={setQuery}
+          placeholder="Buscar receta..."
+          placeholderTextColor={theme.colors.textMuted}
+          style={styles.search}
+          value={query}
+        />
+      </View>
+      <View onLayout={measureGuideTargets} ref={recipeListRef} style={styles.list}>
         {filteredRecipes.map((recipe) => (
           <FormulaListItem
             key={recipe.id}
@@ -705,7 +823,29 @@ export default function HomeScreen() {
                 <Text style={styles.toolActionTitle}>Importar receta</Text>
               </Pressable>
               <Pressable
-                onPress={handleRestoreSamples}
+                onPress={() => {
+                  setSettingsVisible(false);
+                  setHelpVisible(true);
+                }}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>Ayuda</Text>
+              </Pressable>
+              <Pressable
+                onPress={openGuideFromSettings}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>Ver guia de uso</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  handleRestoreSamples();
+                  return;
+                  Alert.alert(
+                    "Ayuda",
+                    "CENTENO es una libreta de formulas panaderas.\n\nConceptos basicos:\n• La harina es la base 100%.\n• La hidratacion indica cuanta agua hay respecto de la harina.\n• Los porcentajes panaderos permiten escalar recetas sin perder proporciones.\n• Podes marcar recetas como Panaderia o Pasteleria.\n• Podes usar una receta como prefermento dentro de otra.\n• El detalle [total - aporte] muestra cuanto pide la formula total menos lo que ya aporta el prefermento.\n• Para guardar o compartir una receta, usa Exportar receta.\n• Para recuperar una receta o cargar una receta enviada por otra persona, usa Importar receta."
+                  );
+                }}
                 style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
               >
                 <Text style={styles.toolActionTitle}>Restablecer recetas iniciales</Text>
@@ -717,20 +857,6 @@ export default function HomeScreen() {
                 <Text style={[styles.toolActionTitle, styles.toolActionDanger]}>
                   Eliminar todas las recetas
                 </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setSettingsVisible(false);
-                  setHelpVisible(true);
-                  return;
-                  Alert.alert(
-                    "Ayuda",
-                    "CENTENO es una libreta de formulas panaderas.\n\nConceptos basicos:\n• La harina es la base 100%.\n• La hidratacion indica cuanta agua hay respecto de la harina.\n• Los porcentajes panaderos permiten escalar recetas sin perder proporciones.\n• Podes marcar recetas como Panaderia o Pasteleria.\n• Podes usar una receta como prefermento dentro de otra.\n• El detalle [total - aporte] muestra cuanto pide la formula total menos lo que ya aporta el prefermento.\n• Para guardar o compartir una receta, usa Exportar receta.\n• Para recuperar una receta o cargar una receta enviada por otra persona, usa Importar receta."
-                  );
-                }}
-                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
-              >
-                <Text style={styles.toolActionTitle}>Ayuda</Text>
               </Pressable>
               <View style={styles.modalActions}>
                 <Pressable
@@ -1011,6 +1137,16 @@ export default function HomeScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <GuideModal
+        onClose={closeGuideModal}
+        onComplete={completeGuide}
+        onSkip={skipGuide}
+        onStepChange={setGuideStepIndex}
+        stepIndex={guideStepIndex}
+        targetRects={guideTargetRects}
+        visible={guideVisible}
+      />
     </Screen>
   );
 }
@@ -1077,6 +1213,16 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 0
   },
+  guideAnchor: {
+    position: "absolute",
+    zIndex: 2
+  },
+  brandFilterAnchor: {
+    right: 24
+  },
+  brandSettingsAnchor: {
+    right: 24
+  },
   search: {
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.borderStrong,
@@ -1109,15 +1255,11 @@ const styles = StyleSheet.create({
   brandFilterButton: {
     backgroundColor: "rgba(247, 242, 231, 0.16)",
     borderColor: "rgba(247, 242, 231, 0.28)",
-    position: "absolute",
-    right: 24,
     zIndex: 2
   },
   brandSettingsButton: {
     backgroundColor: "#F7F2E8",
     borderColor: "rgba(107, 78, 61, 0.14)",
-    position: "absolute",
-    right: 24,
     zIndex: 2
   },
   filterButtonActive: {
