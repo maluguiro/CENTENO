@@ -1,4 +1,5 @@
 import {
+  applyScalingTarget,
   applyScaleByTotalFlour,
   applyScaleByYield,
   parseDecimalInput,
@@ -306,6 +307,46 @@ function runAppliedScalingCases() {
   assertEqual(getDoughWeight(yieldScaled), 2000);
 }
 
+function runActiveScalingTargetCase() {
+  const ingredients: RecipeIngredient[] = [
+    ingredient("flour", "Harina", 500, "flour", 100),
+    ingredient("water", "Agua", 300, "water", 60),
+    ingredient("salt", "Sal", 10, "salt", 2)
+  ];
+
+  const scalingTarget = {
+    mode: "pieces" as const,
+    pieces: 2,
+    pieceWeight: 900,
+    doughWeight: 1800
+  };
+
+  const scaled = applyScalingTarget(ingredients, scalingTarget);
+  assertEqual(getDoughWeight(scaled), 1800);
+
+  const withOil = [
+    ...scaled,
+    ingredient(
+      "oil",
+      "Aceite",
+      getQuantityFromBakerPercentage(getTotalFlour(scaled), 5),
+      "fat",
+      5
+    )
+  ];
+  const reapplied = applyScalingTarget(withOil, scalingTarget);
+  const freed = applyScalingTarget(withOil, undefined);
+
+  assertEqual(getDoughWeight(reapplied), 1800);
+  assertEqual(reapplied.find((item) => item.id === "oil")?.bakerPercentage, 5);
+  assertEqual(getDoughWeight(freed), getDoughWeight(withOil));
+  assertEqual(
+    freed.some((item) => item.id === "oil" && item.quantity > 0),
+    true
+  );
+  assertEqual(getDoughWeight(freed) !== 1800, true);
+}
+
 export function runBakerValidation() {
   runSimpleFormulaCase();
   runFatFormulaCase();
@@ -320,6 +361,7 @@ export function runBakerValidation() {
   runAdjustPercentageCase();
   runDecimalParsingCase();
   runAppliedScalingCases();
+  runActiveScalingTargetCase();
 
   return "baker validation passed";
 }

@@ -9,7 +9,12 @@ import {
 } from "react";
 
 import { sampleRecipes } from "@/data/sampleRecipes";
-import type { Recipe, RecipeCategory, RecipeDraft } from "@/types/recipe";
+import type {
+  Recipe,
+  RecipeCategory,
+  RecipeDraft,
+  RecipeScalingTarget
+} from "@/types/recipe";
 
 const STORAGE_KEY = "centeno.recipes";
 const isDev =
@@ -67,6 +72,7 @@ type RecipesAction =
   | { type: "import"; payload: Recipe }
   | { type: "restoreSamples"; payload: Recipe[] }
   | { type: "deleteAll" }
+  | { type: "clearScalingTarget"; payload: { id: string; restoreSnapshot?: boolean } }
   | { type: "update"; payload: { id: string; draft: RecipeDraft } }
   | { type: "delete"; payload: { id: string } };
 
@@ -77,6 +83,7 @@ type RecipesContextValue = {
   importRecipe: (recipe: Recipe) => string;
   restoreSampleRecipes: () => void;
   deleteAllRecipes: () => void;
+  clearScalingTarget: (id: string, restoreSnapshot?: boolean) => void;
   updateRecipe: (id: string, draft: RecipeDraft) => void;
   deleteRecipe: (id: string) => void;
   getRecipeById: (id: string) => Recipe | undefined;
@@ -92,10 +99,33 @@ function normalizeCategory(category?: RecipeCategory) {
   return category === "pastry" ? "pastry" : "bakery";
 }
 
+function normalizeScalingTarget(scalingTarget?: RecipeScalingTarget) {
+  if (!scalingTarget) {
+    return undefined;
+  }
+
+  const mode = scalingTarget.mode;
+  if (mode !== "totalFlour" && mode !== "doughWeight" && mode !== "pieces") {
+    return undefined;
+  }
+
+  return {
+    mode,
+    totalFlour: scalingTarget.totalFlour,
+    doughWeight: scalingTarget.doughWeight,
+    pieces: scalingTarget.pieces,
+    pieceWeight: scalingTarget.pieceWeight
+  } satisfies RecipeScalingTarget;
+}
+
 function normalizeRecipe(recipe: Recipe): Recipe {
   return {
     ...recipe,
-    category: normalizeCategory(recipe.category)
+    category: normalizeCategory(recipe.category),
+    scalingTarget: normalizeScalingTarget(recipe.scalingTarget),
+    scalingSnapshotIngredients: recipe.scalingSnapshotIngredients?.map((ingredient) => ({
+      ...ingredient
+    }))
   };
 }
 
@@ -134,6 +164,23 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
     }
     case "deleteAll":
       return { recipes: [] };
+    case "clearScalingTarget":
+      return {
+        recipes: state.recipes.map((recipe) =>
+          recipe.id === action.payload.id
+            ? {
+                ...recipe,
+                ingredients:
+                  action.payload.restoreSnapshot && recipe.scalingSnapshotIngredients?.length
+                    ? recipe.scalingSnapshotIngredients.map((ingredient) => ({ ...ingredient }))
+                    : recipe.ingredients,
+                scalingTarget: undefined,
+                scalingSnapshotIngredients: undefined,
+                updatedAt: new Date().toISOString()
+              }
+            : recipe
+        )
+      };
     case "update":
       return {
         recipes: state.recipes.map((recipe) =>
@@ -145,6 +192,10 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
                 notes: action.payload.draft.notes.trim(),
                 category: normalizeCategory(action.payload.draft.category),
                 useAsPreferment: action.payload.draft.useAsPreferment,
+                scalingTarget: normalizeScalingTarget(action.payload.draft.scalingTarget),
+                scalingSnapshotIngredients: action.payload.draft.scalingSnapshotIngredients?.map(
+                  (ingredient) => ({ ...ingredient })
+                ),
                 ingredients: action.payload.draft.ingredients,
                 updatedAt: new Date().toISOString()
               }
@@ -232,6 +283,10 @@ export function RecipesProvider({ children }: PropsWithChildren) {
           notes: draft.notes.trim(),
           category: normalizeCategory(draft.category),
           useAsPreferment: draft.useAsPreferment,
+          scalingTarget: normalizeScalingTarget(draft.scalingTarget),
+          scalingSnapshotIngredients: draft.scalingSnapshotIngredients?.map((ingredient) => ({
+            ...ingredient
+          })),
           ingredients: draft.ingredients.map((ingredient) => ({
             ...ingredient,
             id: ingredient.id || makeId()
@@ -263,6 +318,9 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       },
       deleteAllRecipes: () => {
         dispatch({ type: "deleteAll" });
+      },
+      clearScalingTarget: (id, restoreSnapshot = false) => {
+        dispatch({ type: "clearScalingTarget", payload: { id, restoreSnapshot } });
       },
       updateRecipe: (id, draft) => {
         dispatch({

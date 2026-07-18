@@ -33,6 +33,12 @@ const baseRecipe: Recipe = {
   notes: "Notas",
   category: "bakery",
   useAsPreferment: false,
+  scalingTarget: {
+    mode: "pieces",
+    pieces: 2,
+    pieceWeight: 900,
+    doughWeight: 1800
+  },
   createdAt: "2026-07-17T10:00:00.000Z",
   updatedAt: "2026-07-17T10:00:00.000Z",
   ingredients: [
@@ -65,6 +71,9 @@ function runRecipeValidation() {
   const imported = parseImportedRecipe(exported);
   assert(imported.name === baseRecipe.name, "Import no conserva el nombre.");
   assert(imported.ingredients.length === 2, "Import no conserva ingredientes.");
+  assert(imported.useAsPreferment === false, "Import no conserva useAsPreferment.");
+  assert(imported.scalingTarget?.mode === "pieces", "Import no conserva scalingTarget.");
+  assert(imported.scalingTarget?.pieces === 2, "Import no conserva piezas.");
 
   const shareText = formatRecipeAsShareText(baseRecipe, [baseRecipe]);
   assert(shareText.length > 0, "El texto compartible no debe estar vacio.");
@@ -89,6 +98,10 @@ function runRecipeValidation() {
   });
   const missingCategoryRecipe = parseImportedRecipe(missingCategoryJson);
   assert(missingCategoryRecipe.category === "bakery", "Category por defecto incorrecta.");
+  assert(
+    missingCategoryRecipe.useAsPreferment === false,
+    "useAsPreferment por defecto incorrecto."
+  );
 
   assertThrows(() => parseImportedRecipe("no es json"), "JSON invalido debe fallar.");
   assertThrows(

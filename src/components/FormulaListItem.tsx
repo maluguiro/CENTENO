@@ -7,13 +7,16 @@ import type { Recipe } from "@/types/recipe";
 type FormulaListItemProps = {
   recipe: Recipe;
   onPress: () => void;
+  onLongPress?: () => void;
 };
 
-export function FormulaListItem({ recipe, onPress }: FormulaListItemProps) {
+export function FormulaListItem({ recipe, onLongPress, onPress }: FormulaListItemProps) {
   const summary = getRecipeSummary(recipe);
 
   return (
     <Pressable
+      delayLongPress={420}
+      onLongPress={onLongPress}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >

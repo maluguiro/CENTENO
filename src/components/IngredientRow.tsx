@@ -9,6 +9,7 @@ import type { RecipeIngredient } from "@/types/recipe";
 type IngredientRowProps = {
   ingredient: RecipeIngredient & { scaledQuantity?: number };
   onPress?: () => void;
+  onBreakdownHelpPress?: () => void;
   prefermentBreakdown?: PrefermentBreakdown | null;
   quantityDetail?: string | null;
   quantityWarning?: string | null;
@@ -18,6 +19,7 @@ type IngredientRowProps = {
 export function IngredientRow({
   ingredient,
   onPress,
+  onBreakdownHelpPress,
   prefermentBreakdown,
   quantityDetail,
   quantityOverride,
@@ -46,7 +48,21 @@ export function IngredientRow({
           <Text style={styles.dotSep}>·</Text>
           <Text style={styles.percent}>{ingredient.bakerPercentage}%</Text>
         </View>
-        {quantityDetail ? <Text style={styles.detail}>{quantityDetail}</Text> : null}
+        {quantityDetail ? (
+          <View style={styles.detailRow}>
+            <Text style={styles.detail}>{quantityDetail}</Text>
+            {onBreakdownHelpPress ? (
+              <Pressable
+                accessibilityLabel="Explicar aporte del prefermento"
+                hitSlop={8}
+                onPress={onBreakdownHelpPress}
+                style={({ pressed }) => [styles.helpChip, pressed && styles.helpChipPressed]}
+              >
+                <Text style={styles.helpChipText}>?</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
         {quantityWarning ? <Text style={styles.warning}>{quantityWarning}</Text> : null}
         {isPreferment ? (
           <View style={styles.prefermentBlock}>
@@ -146,11 +162,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16
   },
+  detailRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    paddingLeft: 16,
+    paddingTop: 2
+  },
   detail: {
-    color: theme.colors.textSoft,
-    fontSize: 11,
-    fontWeight: "500",
-    paddingLeft: 16
+    color: theme.colors.accent,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  helpChip: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 20,
+    justifyContent: "center",
+    width: 20
+  },
+  helpChipPressed: {
+    opacity: theme.interaction.pressedOpacity
+  },
+  helpChipText: {
+    color: theme.colors.accentDeep,
+    fontSize: 12,
+    fontWeight: "800"
   },
   warning: {
     color: theme.colors.warning,

@@ -18,15 +18,18 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FormulaListItem } from "@/components/FormulaListItem";
+import { setClipboardText } from "@/lib/clipboard";
+import { exportRecipeToJson } from "@/lib/recipeImportExport";
 import { getClipboardText } from "@/lib/clipboard";
 import {
   parseImportedRecipe,
   prepareImportedRecipe
 } from "@/lib/recipeImportExport";
+import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { Screen } from "@/components/Screen";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
-import type { RecipeCategory } from "@/types/recipe";
+import type { Recipe, RecipeCategory } from "@/types/recipe";
 
 const breadPattern = require("../assets/branding/bread-pattern.png");
 
@@ -56,15 +59,51 @@ function getBaseRecipeIngredients() {
   ];
 }
 
+function normalizeRecipeName(value: string) {
+  return value.trim().toLocaleLowerCase("es");
+}
+
+function buildDuplicateRecipeName(name: string, recipes: Recipe[]) {
+  const baseName = name.trim();
+  const existingNames = new Set(recipes.map((recipe) => normalizeRecipeName(recipe.name)));
+
+  const firstCandidate = `${baseName} (copia)`;
+  if (!existingNames.has(normalizeRecipeName(firstCandidate))) {
+    return firstCandidate;
+  }
+
+  let index = 2;
+  while (existingNames.has(normalizeRecipeName(`${baseName} (copia ${index})`))) {
+    index += 1;
+  }
+
+  return `${baseName} (copia ${index})`;
+}
+
+type HomeExportMode = "selector" | "shareText" | "importCode" | null;
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { createRecipe, deleteAllRecipes, importRecipe, recipes, restoreSampleRecipes } =
+  const {
+    createRecipe,
+    deleteAllRecipes,
+    deleteRecipe,
+    importRecipe,
+    recipes,
+    restoreSampleRecipes,
+    updateRecipe
+  } =
     useRecipes();
   const [categoryFilter, setCategoryFilter] = useState<RecipeCategory | "all">("all");
   const [query, setQuery] = useState("");
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
+  const [quickRecipeId, setQuickRecipeId] = useState<string | null>(null);
+  const [quickExportMode, setQuickExportMode] = useState<HomeExportMode>(null);
+  const [quickExportJson, setQuickExportJson] = useState("");
+  const [quickShareText, setQuickShareText] = useState("");
+  const [quickCopyFeedback, setQuickCopyFeedback] = useState<HomeExportMode>(null);
   const [importInput, setImportInput] = useState("");
   const [importError, setImportError] = useState("");
   const [importPasteFeedback, setImportPasteFeedback] = useState("");
@@ -96,6 +135,11 @@ export default function HomeScreen() {
       .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
   }, [categoryFilter, query, recipes]);
 
+  const quickRecipe = useMemo(
+    () => recipes.find((recipe) => recipe.id === quickRecipeId),
+    [quickRecipeId, recipes]
+  );
+
   function closeNewRecipeModal() {
     Keyboard.dismiss();
     setNewRecipeVisible(false);
@@ -116,6 +160,13 @@ export default function HomeScreen() {
     setImportPasteFeedback(message);
     setTimeout(() => {
       setImportPasteFeedback((current) => (current === message ? "" : current));
+    }, 1500);
+  }
+
+  function showQuickCopyFeedback(mode: Exclude<HomeExportMode, "selector" | null>) {
+    setQuickCopyFeedback(mode);
+    setTimeout(() => {
+      setQuickCopyFeedback((current) => (current === mode ? null : current));
     }, 1500);
   }
 
@@ -173,6 +224,119 @@ export default function HomeScreen() {
   function openImportFromSettings() {
     setSettingsVisible(false);
     setImportVisible(true);
+  }
+
+  function openQuickActions(recipe: Recipe) {
+    setQuickRecipeId(recipe.id);
+  }
+
+  function closeQuickActions() {
+    setQuickRecipeId(null);
+  }
+
+  function closeQuickExport() {
+    setQuickExportMode(null);
+    setQuickCopyFeedback(null);
+  }
+
+  function handleToggleQuickPreferment() {
+    if (!quickRecipe) {
+      return;
+    }
+
+    updateRecipe(quickRecipe.id, {
+      name: quickRecipe.name,
+      description: quickRecipe.description ?? "",
+      notes: quickRecipe.notes ?? "",
+      category: quickRecipe.category ?? "bakery",
+      useAsPreferment: !quickRecipe.useAsPreferment,
+      scalingTarget: quickRecipe.scalingTarget,
+      scalingSnapshotIngredients: quickRecipe.scalingSnapshotIngredients,
+      ingredients: quickRecipe.ingredients
+    });
+
+    closeQuickActions();
+    Alert.alert(
+      quickRecipe.useAsPreferment
+        ? "La receta ya no se ofrece como prefermento."
+        : "Receta marcada como prefermento."
+    );
+  }
+
+  function handleDuplicateQuickRecipe() {
+    if (!quickRecipe) {
+      return;
+    }
+
+    createRecipe({
+      name: buildDuplicateRecipeName(quickRecipe.name, recipes),
+      description: quickRecipe.description ?? "",
+      notes: quickRecipe.notes ?? "",
+      category: quickRecipe.category ?? "bakery",
+      useAsPreferment: quickRecipe.useAsPreferment ?? false,
+      scalingTarget: quickRecipe.scalingTarget,
+      scalingSnapshotIngredients: quickRecipe.scalingSnapshotIngredients?.map((ingredient) => ({
+        ...ingredient,
+        id: `${ingredient.id}-snapshot-${Date.now()}`
+      })),
+      ingredients: quickRecipe.ingredients.map((ingredient, index) => ({
+        ...ingredient,
+        id: `${ingredient.id}-${Date.now()}-${index}`
+      }))
+    });
+
+    closeQuickActions();
+  }
+
+  function handleOpenQuickExport() {
+    if (!quickRecipe) {
+      return;
+    }
+
+    setQuickExportJson(exportRecipeToJson(quickRecipe));
+    setQuickShareText(formatRecipeAsShareText(quickRecipe, recipes));
+    setQuickCopyFeedback(null);
+    setQuickExportMode("selector");
+  }
+
+  async function handleCopyQuickExport(
+    value: string,
+    mode: Exclude<HomeExportMode, "selector" | null>
+  ) {
+    const copied = await setClipboardText(value);
+
+    if (!copied) {
+      Alert.alert("El portapapeles no esta disponible en esta build.");
+      return;
+    }
+
+    showQuickCopyFeedback(mode);
+  }
+
+  function handleEditQuickRecipe() {
+    if (!quickRecipe) {
+      return;
+    }
+
+    closeQuickActions();
+    router.push(`/recipes/form?id=${quickRecipe.id}`);
+  }
+
+  function handleDeleteQuickRecipe() {
+    if (!quickRecipe) {
+      return;
+    }
+
+    const recipeToDelete = quickRecipe;
+    closeQuickActions();
+    Alert.alert("¿Eliminar esta receta?", "Esta accion no se puede deshacer.", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: () => deleteRecipe(recipeToDelete.id)
+      }
+    ]);
   }
 
   function handleRestoreSamples() {
@@ -294,6 +458,7 @@ export default function HomeScreen() {
         {filteredRecipes.map((recipe) => (
           <FormulaListItem
             key={recipe.id}
+            onLongPress={() => openQuickActions(recipe)}
             onPress={() => router.push(`/recipes/${recipe.id}`)}
             recipe={recipe}
           />
@@ -306,6 +471,215 @@ export default function HomeScreen() {
           </Text>
         ) : null}
       </View>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closeQuickActions}
+        transparent
+        visible={Boolean(quickRecipe) && quickExportMode === null}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: "padding", android: "height" })}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCard}>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.modalTitle}>{quickRecipe?.name ?? "Receta"}</Text>
+              <Pressable
+                onPress={handleToggleQuickPreferment}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>
+                  {quickRecipe?.useAsPreferment
+                    ? "Quitar como prefermento"
+                    : "Marcar como prefermento"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleDuplicateQuickRecipe}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>Duplicar receta</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleOpenQuickExport}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>Exportar receta</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleEditQuickRecipe}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>Editar datos de receta</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleDeleteQuickRecipe}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={[styles.toolActionTitle, styles.toolActionDanger]}>
+                  Eliminar receta
+                </Text>
+              </Pressable>
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={closeQuickActions}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={closeQuickExport}
+        transparent
+        visible={quickExportMode !== null}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: "padding", android: "height" })}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCard}>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {quickExportMode === "selector" ? (
+                <>
+                  <Text style={styles.modalTitle}>Exportar receta</Text>
+                  <Text style={styles.modalHelper}>
+                    Elegi como queres compartir esta receta.
+                  </Text>
+                  <Pressable
+                    onPress={() => setQuickExportMode("shareText")}
+                    style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                  >
+                    <Text style={styles.exportOptionTitle}>Compartir como texto</Text>
+                    <Text style={styles.exportOptionDescription}>
+                      Para WhatsApp, notas o imprimir.
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setQuickExportMode("importCode")}
+                    style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                  >
+                    <Text style={styles.exportOptionTitle}>Codigo para importar</Text>
+                    <Text style={styles.exportOptionDescription}>
+                      Para cargar esta receta en otro CENTENO.
+                    </Text>
+                  </Pressable>
+                  <View style={styles.modalActions}>
+                    <Pressable
+                      onPress={closeQuickExport}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Cerrar</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
+
+              {quickExportMode === "shareText" ? (
+                <>
+                  <Text style={styles.modalTitle}>Compartir como texto</Text>
+                  <Text style={styles.modalHelper}>
+                    Copia esta receta para enviarla por WhatsApp o guardarla en notas.
+                  </Text>
+                  <View style={styles.modalActionsStart}>
+                    <Pressable
+                      onPress={() => handleCopyQuickExport(quickShareText, "shareText")}
+                      style={({ pressed }) => [
+                        styles.secondaryFilledAction,
+                        pressed && styles.secondaryFilledActionPressed
+                      ]}
+                    >
+                      <Text style={styles.secondaryFilledActionLabel}>
+                        {quickCopyFeedback === "shareText" ? "Copiado ?" : "Copiar"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <TextInput
+                    editable
+                    multiline
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[styles.modalInput, styles.importField]}
+                    textAlignVertical="top"
+                    value={quickShareText}
+                  />
+                  <View style={styles.modalActions}>
+                    <Pressable
+                      onPress={() => setQuickExportMode("selector")}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Volver</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={closeQuickExport}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Cerrar</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
+
+              {quickExportMode === "importCode" ? (
+                <>
+                  <Text style={styles.modalTitle}>Codigo para importar</Text>
+                  <Text style={styles.modalHelper}>
+                    Copia este codigo completo para cargar la receta en otro CENTENO.
+                  </Text>
+                  <View style={styles.modalActionsStart}>
+                    <Pressable
+                      onPress={() => handleCopyQuickExport(quickExportJson, "importCode")}
+                      style={({ pressed }) => [
+                        styles.secondaryFilledAction,
+                        pressed && styles.secondaryFilledActionPressed
+                      ]}
+                    >
+                      <Text style={styles.secondaryFilledActionLabel}>
+                        {quickCopyFeedback === "importCode" ? "Copiado ?" : "Copiar"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <TextInput
+                    editable
+                    multiline
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[styles.modalInput, styles.importField]}
+                    textAlignVertical="top"
+                    value={quickExportJson}
+                  />
+                  <View style={styles.modalActions}>
+                    <Pressable
+                      onPress={() => setQuickExportMode("selector")}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Volver</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={closeQuickExport}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Cerrar</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <Modal
         animationType="fade"
@@ -392,6 +766,53 @@ export default function HomeScreen() {
                 CENTENO es una libreta de formulas panaderas.
               </Text>
               <View style={styles.helpList}>
+                <View style={styles.helpSection}>
+                  <Text style={styles.helpSectionTitle}>Porcentajes panaderos</Text>
+                  <Text style={styles.helpItem}>
+                    En panaderia, la harina total siempre es el 100%.
+                  </Text>
+                  <Text style={styles.helpItem}>
+                    Los demas ingredientes se calculan en relacion con esa harina.
+                  </Text>
+                  <Text style={styles.helpItem}>
+                    Ejemplo: harina 1000 g = 100%, agua 650 g = 65%, sal 20 g = 2%.
+                  </Text>
+                  <Text style={styles.helpItem}>
+                    Esto permite escalar una receta sin perder proporciones.
+                  </Text>
+                </View>
+                <View style={styles.helpSection}>
+                  <Text style={styles.helpSectionTitle}>Ajuste activo</Text>
+                  <Text style={styles.helpItem}>
+                    Cuando ajustas por harina, masa total o piezas, CENTENO puede mantener ese
+                    objetivo activo.
+                  </Text>
+                  <Text style={styles.helpItem}>
+                    Por ejemplo, si elegis 2 piezas de 900 g, la app busca conservar 1800 g de masa
+                    total.
+                  </Text>
+                  <Text style={styles.helpItem}>
+                    Si despues agregas un ingrediente por porcentaje, recalcula la formula para
+                    mantener ese objetivo.
+                  </Text>
+                </View>
+                <View style={styles.helpSection}>
+                  <Text style={styles.helpSectionTitle}>Prefermentos</Text>
+                  <Text style={styles.helpItem}>
+                    Cuando usas un prefermento, parte de la harina y del agua ya vienen dentro de
+                    ese prefermento.
+                  </Text>
+                  <Text style={styles.helpItem}>
+                    Por eso CENTENO muestra el extra que tenes que agregar y el detalle [total -
+                    aporte].
+                  </Text>
+                  <Text style={styles.helpItem}>
+                    Ejemplo: [800 - 400] significa 800 g pide la formula total, 400 g ya aporta el
+                    prefermento y 400 g agregas aparte.
+                  </Text>
+                </View>
+                {false ? (
+                  <>
                 <Text style={styles.helpItem}>• La harina es la base 100%.</Text>
                 <Text style={styles.helpItem}>
                   • La hidratacion indica cuanta agua hay respecto de la harina.
@@ -416,6 +837,8 @@ export default function HomeScreen() {
                   • Para recuperar una receta o cargar una receta enviada por otra persona, usa
                   Importar receta.
                 </Text>
+                  </>
+                ) : null}
               </View>
               <View style={styles.modalActions}>
                 <Pressable
@@ -828,6 +1251,14 @@ const styles = StyleSheet.create({
   helpList: {
     gap: 8
   },
+  helpSection: {
+    gap: 6
+  },
+  helpSectionTitle: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: "800"
+  },
   helpItem: {
     color: theme.colors.text,
     fontSize: 13,
@@ -847,6 +1278,25 @@ const styles = StyleSheet.create({
   },
   toolActionDanger: {
     color: theme.colors.danger
+  },
+  exportOption: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 14
+  },
+  exportOptionTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  exportOptionDescription: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18
   },
   modalInput: {
     backgroundColor: theme.colors.surface,
@@ -973,3 +1423,4 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   }
 });
+

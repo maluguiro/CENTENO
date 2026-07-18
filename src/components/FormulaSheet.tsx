@@ -19,9 +19,11 @@ import { HydrationBar } from "@/components/HydrationBar";
 import { IngredientRow } from "@/components/IngredientRow";
 import { setClipboardText } from "@/lib/clipboard";
 import {
+  applyScalingTarget,
   applyScaleByDoughWeight,
   applyScaleByTotalFlour,
   applyScaleByYield,
+  buildScalingTargetLabel,
   formatDecimalInput,
   getBakerPercentageFromQuantity,
   getDoughWeight,
@@ -39,12 +41,20 @@ import { exportRecipeToJson } from "@/lib/recipeImportExport";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
-import type { IngredientRole, IngredientUnit, Recipe, RecipeDraft, RecipeIngredient } from "@/types/recipe";
+import type {
+  IngredientRole,
+  IngredientUnit,
+  Recipe,
+  RecipeDraft,
+  RecipeIngredient,
+  RecipeScalingTarget
+} from "@/types/recipe";
 
 type ScaleMode = "flour" | "dough" | "yield";
 type PrefermentMode = "grams" | "percent";
 type IngredientField = "quantity" | "percentage" | null;
 type ExportMode = "selector" | "shareText" | "importCode" | null;
+type PrefermentContextKind = "flour" | "water";
 
 const roles: IngredientRole[] = [
   "flour",
@@ -87,6 +97,14 @@ type IngredientDraftState = {
   linkedRecipeName?: string;
 };
 
+type PrefermentContextItem = {
+  kind: PrefermentContextKind;
+  total: number;
+  contributed: number;
+  extra: number;
+  detail: string;
+};
+
 function emptyIngredient(role: IngredientRole = "other"): IngredientDraftState {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -118,13 +136,15 @@ function getRecipeDraft(recipe: Recipe, ingredients: RecipeIngredient[], notes?:
     notes: notes ?? recipe.notes ?? "",
     category: recipe.category ?? "bakery",
     useAsPreferment: recipe.useAsPreferment ?? false,
+    scalingTarget: recipe.scalingTarget,
+    scalingSnapshotIngredients: recipe.scalingSnapshotIngredients,
     ingredients
   };
 }
 
 export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const insets = useSafeAreaInsets();
-  const { recipes, createRecipe, deleteRecipe, updateRecipe } = useRecipes();
+  const { recipes, clearScalingTarget, createRecipe, deleteRecipe, updateRecipe } = useRecipes();
   const [menuVisible, setMenuVisible] = useState(false);
   const [scaleVisible, setScaleVisible] = useState(false);
   const [notesVisible, setNotesVisible] = useState(false);
@@ -138,7 +158,13 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [ingredientDraft, setIngredientDraft] = useState<IngredientDraftState>(emptyIngredient());
   const [lastEditedField, setLastEditedField] = useState<IngredientField>(null);
   const [notesDraft, setNotesDraft] = useState(recipe.notes ?? "");
-  const [mode, setMode] = useState<ScaleMode>("flour");
+  const [mode, setMode] = useState<ScaleMode>(
+    recipe.scalingTarget?.mode === "doughWeight"
+      ? "dough"
+      : recipe.scalingTarget?.mode === "pieces"
+        ? "yield"
+        : "flour"
+  );
   const [scaleHelp, setScaleHelp] = useState<ScaleMode | null>(null);
   const [flourTargetInput, setFlourTargetInput] = useState(
     formatDecimalInput(getTotalFlour(recipe.ingredients))
@@ -146,11 +172,21 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [doughTargetInput, setDoughTargetInput] = useState(
     formatDecimalInput(getDoughWeight(recipe.ingredients))
   );
-  const [pieceCountInput, setPieceCountInput] = useState("10");
-  const [pieceWeightInput, setPieceWeightInput] = useState("200");
+  const [pieceCountInput, setPieceCountInput] = useState(
+    recipe.scalingTarget?.mode === "pieces" && recipe.scalingTarget.pieces
+      ? formatDecimalInput(recipe.scalingTarget.pieces)
+      : "10"
+  );
+  const [pieceWeightInput, setPieceWeightInput] = useState(
+    recipe.scalingTarget?.mode === "pieces" && recipe.scalingTarget.pieceWeight
+      ? formatDecimalInput(recipe.scalingTarget.pieceWeight)
+      : "200"
+  );
   const [selectedPrefermentId, setSelectedPrefermentId] = useState<string | null>(null);
   const [prefermentMode, setPrefermentMode] = useState<PrefermentMode>("grams");
   const [prefermentQuantityInput, setPrefermentQuantityInput] = useState("");
+  const [prefermentHelpVisible, setPrefermentHelpVisible] = useState(false);
+  const [scalingHelpVisible, setScalingHelpVisible] = useState(false);
 
   const prefermentRecipes = useMemo(
     () => recipes.filter((item) => item.id !== recipe.id && item.useAsPreferment),
@@ -172,14 +208,82 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       preferment: prefermentPercentage > 0 ? `${prefermentPercentage}%` : "No"
     };
   }, [recipe.ingredients]);
+  const activeScalingLabel = buildScalingTargetLabel(recipe.scalingTarget);
+  const prefermentCount = useMemo(
+    () => recipe.ingredients.filter((ingredient) => ingredient.role === "preferment").length,
+    [recipe.ingredients]
+  );
+  const prefermentContextItems = useMemo(() => {
+    const totals = recipe.ingredients.reduce<Partial<Record<PrefermentContextKind, PrefermentContextItem>>>(
+      (current, ingredient) => {
+        const kind =
+          ingredient.role === "flour"
+            ? "flour"
+            : ingredient.role === "water"
+              ? "water"
+              : null;
+
+        if (!kind) {
+          return current;
+        }
+
+        const breakdown = getIngredientDisplayBreakdown(
+          ingredient,
+          recipe.ingredients,
+          (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
+          recipe.id
+        );
+
+        if (breakdown.contributed <= 0) {
+          return current;
+        }
+
+        const existing = current[kind] ?? {
+          kind,
+          total: 0,
+          contributed: 0,
+          extra: 0,
+          detail: ""
+        };
+
+        current[kind] = {
+          kind,
+          total: existing.total + breakdown.totalRequired,
+          contributed: existing.contributed + breakdown.contributed,
+          extra: existing.extra + breakdown.visibleQuantity,
+          detail: ""
+        };
+
+        return current;
+      },
+      {}
+    );
+
+    return (["flour", "water"] as const)
+      .map((kind) => totals[kind])
+      .filter((item): item is PrefermentContextItem => Boolean(item))
+      .map((item) => ({
+        ...item,
+        detail: `[${item.total} - ${item.contributed}]`
+      }));
+  }, [recipe.id, recipe.ingredients, recipeLookup]);
 
   function syncScaleInputs(nextIngredients: RecipeIngredient[]) {
     setFlourTargetInput(formatDecimalInput(getTotalFlour(nextIngredients)));
     setDoughTargetInput(formatDecimalInput(getDoughWeight(nextIngredients)));
   }
 
-  function updateRecipeIngredients(nextIngredients: RecipeIngredient[], nextNotes?: string) {
-    updateRecipe(recipe.id, getRecipeDraft(recipe, nextIngredients, nextNotes));
+  function updateRecipeIngredients(
+    nextIngredients: RecipeIngredient[],
+    nextNotes?: string,
+    nextScalingTarget: RecipeScalingTarget | null = recipe.scalingTarget ?? null,
+    nextScalingSnapshotIngredients: RecipeIngredient[] | null = recipe.scalingSnapshotIngredients ?? null
+  ) {
+    updateRecipe(recipe.id, {
+      ...getRecipeDraft(recipe, nextIngredients, nextNotes),
+      scalingTarget: nextScalingTarget ?? undefined,
+      scalingSnapshotIngredients: nextScalingSnapshotIngredients ?? undefined
+    });
     syncScaleInputs(nextIngredients);
   }
 
@@ -281,7 +385,12 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       );
     }
 
-    updateRecipeIngredients(nextIngredients);
+    const adjustedIngredients =
+      recipe.scalingTarget && lastEditedField
+        ? applyScalingTarget(nextIngredients, recipe.scalingTarget)
+        : nextIngredients;
+
+    updateRecipeIngredients(adjustedIngredients);
     Keyboard.dismiss();
     setIngredientVisible(false);
   }
@@ -291,8 +400,12 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       return;
     }
 
+    const nextIngredients = recipe.ingredients.filter(
+      (ingredient) => ingredient.id !== editingIngredientId
+    );
+
     updateRecipeIngredients(
-      recipe.ingredients.filter((ingredient) => ingredient.id !== editingIngredientId)
+      recipe.scalingTarget ? applyScalingTarget(nextIngredients, recipe.scalingTarget) : nextIngredients
     );
     Keyboard.dismiss();
     setIngredientVisible(false);
@@ -305,6 +418,11 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       notes: recipe.notes ?? "",
       category: recipe.category ?? "bakery",
       useAsPreferment: recipe.useAsPreferment ?? false,
+      scalingTarget: recipe.scalingTarget,
+      scalingSnapshotIngredients: recipe.scalingSnapshotIngredients?.map((ingredient) => ({
+        ...ingredient,
+        id: `${ingredient.id}-snapshot-${Date.now()}`
+      })),
       ingredients: recipe.ingredients.map((ingredient) => ({
         ...ingredient,
         id: `${ingredient.id}-${Date.now()}`
@@ -367,7 +485,32 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       );
     }
 
-    updateRecipeIngredients(nextIngredients);
+    const nextScalingTarget =
+      mode === "flour"
+        ? {
+            mode: "totalFlour" as const,
+            totalFlour: parseDecimalInput(flourTargetInput)
+          }
+        : mode === "dough"
+          ? {
+              mode: "doughWeight" as const,
+              doughWeight: parseDecimalInput(doughTargetInput)
+            }
+          : {
+              mode: "pieces" as const,
+              pieces: Math.max(0, Math.round(parseDecimalInput(pieceCountInput))),
+              pieceWeight: parseDecimalInput(pieceWeightInput),
+              doughWeight:
+                Math.max(0, Math.round(parseDecimalInput(pieceCountInput))) *
+                parseDecimalInput(pieceWeightInput)
+            };
+
+    updateRecipeIngredients(
+      nextIngredients,
+      undefined,
+      nextScalingTarget,
+      recipe.ingredients.map((ingredient) => ({ ...ingredient }))
+    );
     Keyboard.dismiss();
     setScaleVisible(false);
   }
@@ -398,19 +541,23 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         ? numericValue
         : getBakerPercentageFromQuantity(quantity, flourTotal);
 
-    updateRecipeIngredients([
+    const nextIngredients: RecipeIngredient[] = [
       ...recipe.ingredients,
       {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name: selected.name,
         quantity,
-        unit: "g",
-        role: "preferment",
+        unit: "g" as const,
+        role: "preferment" as const,
         bakerPercentage,
         linkedRecipeId: selected.id,
         linkedRecipeName: selected.name
       }
-    ]);
+    ];
+
+    updateRecipeIngredients(
+      recipe.scalingTarget ? applyScalingTarget(nextIngredients, recipe.scalingTarget) : nextIngredients
+    );
 
     Keyboard.dismiss();
     setPrefermentVisible(false);
@@ -467,7 +614,20 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       <View style={styles.statusRow}>
         <Text style={styles.statusText}>Indice de humedad {summary.moisture}%</Text>
       </View>
-
+      {activeScalingLabel ? (
+        <View style={styles.activeTargetRow}>
+          <View style={styles.activeTargetChip}>
+            <Text style={styles.activeTargetText}>{activeScalingLabel}</Text>
+          </View>
+          <Pressable
+            accessibilityLabel="Explicar ajuste activo"
+            onPress={() => setScalingHelpVisible(true)}
+            style={({ pressed }) => [styles.helpChip, pressed && styles.chipPressed]}
+          >
+            <Text style={styles.helpChipText}>?</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <View style={styles.ingredientsList}>
         {recipe.ingredients.map((ingredient) => {
           const displayBreakdown = getIngredientDisplayBreakdown(
@@ -488,6 +648,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 recipe.id
               )}
               quantityDetail={displayBreakdown.detail}
+              onBreakdownHelpPress={
+                displayBreakdown.detail ? () => setPrefermentHelpVisible(true) : undefined
+              }
               quantityOverride={displayBreakdown.visibleQuantity}
               quantityWarning={displayBreakdown.warning}
             />
@@ -663,6 +826,19 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               <Text style={styles.helperText}>
                 Copia esta receta para enviarla por WhatsApp o guardarla en notas.
               </Text>
+              <View style={styles.copyActionRow}>
+                <Pressable
+                  onPress={() => handleCopyExport(shareText, "shareText")}
+                  style={({ pressed }) => [
+                    styles.secondaryAction,
+                    pressed && styles.secondaryActionPressed
+                  ]}
+                >
+                  <Text style={styles.secondaryActionLabel}>
+                    {copyFeedback === "shareText" ? "Copiado ?" : "Copiar"}
+                  </Text>
+                </Pressable>
+              </View>
               <TextInput
                 multiline
                 editable
@@ -672,17 +848,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 value={shareText}
               />
               <View style={styles.sheetActions}>
-                <Pressable
-                  onPress={() => handleCopyExport(shareText, "shareText")}
-                  style={({ pressed }) => [
-                    styles.secondaryAction,
-                    pressed && styles.secondaryActionPressed
-                  ]}
-                >
-                  <Text style={styles.secondaryActionLabel}>
-                    {copyFeedback === "shareText" ? "Copiado ✓" : "Copiar"}
-                  </Text>
-                </Pressable>
                 <Pressable
                   onPress={() => setExportMode("selector")}
                   style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
@@ -705,6 +870,19 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               <Text style={styles.helperText}>
                 Copia este codigo para cargar la receta en otro CENTENO.
               </Text>
+              <View style={styles.copyActionRow}>
+                <Pressable
+                  onPress={() => handleCopyExport(exportJson, "importCode")}
+                  style={({ pressed }) => [
+                    styles.secondaryAction,
+                    pressed && styles.secondaryActionPressed
+                  ]}
+                >
+                  <Text style={styles.secondaryActionLabel}>
+                    {copyFeedback === "importCode" ? "Copiado ?" : "Copiar"}
+                  </Text>
+                </Pressable>
+              </View>
               <TextInput
                 multiline
                 editable
@@ -714,17 +892,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 value={exportJson}
               />
               <View style={styles.sheetActions}>
-                <Pressable
-                  onPress={() => handleCopyExport(exportJson, "importCode")}
-                  style={({ pressed }) => [
-                    styles.secondaryAction,
-                    pressed && styles.secondaryActionPressed
-                  ]}
-                >
-                  <Text style={styles.secondaryActionLabel}>
-                    {copyFeedback === "importCode" ? "Copiado ✓" : "Copiar"}
-                  </Text>
-                </Pressable>
                 <Pressable
                   onPress={() => setExportMode("selector")}
                   style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
@@ -740,6 +907,102 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               </View>
             </>
           ) : null}
+        </CenteredModalSheet>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setScalingHelpVisible(false)}
+        transparent
+        visible={scalingHelpVisible}
+      >
+        <CenteredModalSheet>
+          <Text style={styles.sheetTitle}>Ajuste activo</Text>
+          <Text style={styles.notesText}>CENTENO puede mantener un objetivo de produccion activo.</Text>
+          {recipe.scalingTarget?.mode === "pieces" ? (
+            <Text style={styles.notesText}>
+              En esta receta:
+              {"\n"}
+              {`${recipe.scalingTarget.pieces ?? 0} piezas x ${recipe.scalingTarget.pieceWeight ?? 0} g = ${recipe.scalingTarget.doughWeight ?? 0} g de masa objetivo.`}
+            </Text>
+          ) : null}
+          {recipe.scalingTarget?.mode === "doughWeight" ? (
+            <Text style={styles.notesText}>
+              En esta receta:
+              {"\n"}
+              {`El objetivo activo es ${recipe.scalingTarget.doughWeight ?? 0} g de masa.`}
+            </Text>
+          ) : null}
+          {recipe.scalingTarget?.mode === "totalFlour" ? (
+            <Text style={styles.notesText}>
+              En esta receta:
+              {"\n"}
+              {`El objetivo activo es ${recipe.scalingTarget.totalFlour ?? 0} g de harina total.`}
+            </Text>
+          ) : null}
+          <Text style={styles.notesText}>
+            Mientras el ajuste activo este encendido:
+            {"\n"}• Si agregas un ingrediente por porcentaje, la masa total se mantiene.
+            {"\n"}• Si cambias porcentajes, la formula se recalcula.
+            {"\n"}• Si queres editar libremente sin mantener ese objetivo, usa "Quitar ajuste activo".
+          </Text>
+          <View style={styles.sheetActions}>
+            <Pressable
+              onPress={() => setScalingHelpVisible(false)}
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            >
+              <Text style={styles.primaryActionLabel}>Entendido</Text>
+            </Pressable>
+          </View>
+        </CenteredModalSheet>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setPrefermentHelpVisible(false)}
+        transparent
+        visible={prefermentHelpVisible}
+      >
+        <CenteredModalSheet>
+          <Text style={styles.sheetTitle}>Aporte del prefermento</Text>
+          <Text style={styles.notesText}>
+            En esta receta, CENTENO mantiene los porcentajes de la formula total, pero descuenta la
+            harina y el agua que ya vienen dentro del{" "}
+            {prefermentCount > 1 ? "aporte total de los prefermentos." : "prefermento."}
+          </Text>
+          {prefermentContextItems.map((item) => {
+            const label = item.kind === "flour" ? "Harina" : "Agua";
+            const source = prefermentCount > 1 ? "el total de los prefermentos" : "el prefermento";
+
+            return (
+              <Text key={item.kind} style={styles.notesText}>
+                {label}:
+                {"\n"}
+                {`${item.total} g = ${label.toLowerCase()} total de la formula`}
+                {"\n"}
+                {`${item.contributed} g = ${label.toLowerCase()} que aporta ${source}`}
+                {"\n"}
+                {`${item.extra} g = ${label.toLowerCase()} extra que tenes que agregar`}
+              </Text>
+            );
+          })}
+          {prefermentContextItems.length ? (
+            <Text style={styles.notesText}>
+              Por eso ves:
+              {prefermentContextItems.map((item) => `\n${item.detail}`).join("")}
+            </Text>
+          ) : null}
+          <Text style={styles.notesText}>
+            La hidratacion se calcula sobre la formula total, no solo sobre lo que agregas aparte.
+          </Text>
+          <View style={styles.sheetActions}>
+            <Pressable
+              onPress={() => setPrefermentHelpVisible(false)}
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            >
+              <Text style={styles.primaryActionLabel}>Entendido</Text>
+            </Pressable>
+          </View>
         </CenteredModalSheet>
       </Modal>
 
@@ -930,6 +1193,34 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             <MenuAction label="Agregar prefermento" onPress={openPrefermentModal} />
             <MenuAction label="Duplicar receta" onPress={duplicateRecipe} />
             <MenuAction label="Exportar receta" onPress={openExportModal} />
+            {recipe.scalingTarget ? (
+              <MenuAction
+                label="Quitar ajuste activo"
+                onPress={() => {
+                  setMenuVisible(false);
+                  if (recipe.scalingSnapshotIngredients?.length) {
+                    Alert.alert(
+                      "Quitar ajuste activo",
+                      "Queres mantener los gramos actuales o restablecer la receta al valor anterior al ajuste?",
+                      [
+                        { text: "Cancelar", style: "cancel" },
+                        {
+                          text: "Mantener actual",
+                          onPress: () => clearScalingTarget(recipe.id, false)
+                        },
+                        {
+                          text: "Restablecer anterior",
+                          onPress: () => clearScalingTarget(recipe.id, true)
+                        }
+                      ]
+                    );
+                    return;
+                  }
+
+                  clearScalingTarget(recipe.id, false);
+                }}
+              />
+            ) : null}
             <MenuAction
               label="Editar datos de receta"
               onPress={() => {
@@ -1230,10 +1521,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.xs,
     paddingVertical: theme.spacing.xxs
   },
+  activeTargetRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xxs
+  },
+  activeTargetChip: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  activeTargetText: {
+    color: theme.colors.accentDeep,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  breakdownHelpRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.xs,
+    justifyContent: "space-between",
+    paddingHorizontal: theme.spacing.xs,
+    paddingVertical: theme.spacing.xxs
+  },
   statusText: {
     color: theme.colors.textSoft,
     fontSize: 12,
     fontWeight: "500"
+  },
+  helpChip: {
+    alignItems: "center",
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 22,
+    justifyContent: "center",
+    width: 22
+  },
+  helpChipText: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: "800"
   },
   ingredientsList: {
     gap: 0
@@ -1357,6 +1691,9 @@ const styles = StyleSheet.create({
     color: theme.colors.textSoft,
     fontSize: 12,
     lineHeight: 18
+  },
+  copyActionRow: {
+    alignItems: "flex-start"
   },
   inlineFields: {
     flexDirection: "row",
@@ -1561,3 +1898,5 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   }
 });
+
+

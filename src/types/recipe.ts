@@ -1,5 +1,6 @@
 export type IngredientUnit = "g" | "kg" | "ml" | "l" | "unit";
 export type RecipeCategory = "bakery" | "pastry";
+export type RecipeScalingTargetMode = "totalFlour" | "doughWeight" | "pieces";
 
 export type IngredientRole =
   | "flour"
@@ -23,6 +24,14 @@ export type RecipeIngredient = {
   linkedRecipeName?: string;
 };
 
+export type RecipeScalingTarget = {
+  mode: RecipeScalingTargetMode;
+  totalFlour?: number;
+  doughWeight?: number;
+  pieces?: number;
+  pieceWeight?: number;
+};
+
 export type Recipe = {
   id: string;
   name: string;
@@ -30,6 +39,8 @@ export type Recipe = {
   notes?: string;
   category?: RecipeCategory;
   useAsPreferment?: boolean;
+  scalingTarget?: RecipeScalingTarget;
+  scalingSnapshotIngredients?: RecipeIngredient[];
   ingredients: RecipeIngredient[];
   createdAt: string;
   updatedAt: string;
@@ -41,5 +52,7 @@ export type RecipeDraft = {
   notes: string;
   category: RecipeCategory;
   useAsPreferment: boolean;
+  scalingTarget?: RecipeScalingTarget;
+  scalingSnapshotIngredients?: RecipeIngredient[];
   ingredients: RecipeIngredient[];
 };

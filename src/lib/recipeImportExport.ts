@@ -3,7 +3,8 @@ import type {
   IngredientUnit,
   Recipe,
   RecipeCategory,
-  RecipeIngredient
+  RecipeIngredient,
+  RecipeScalingTarget
 } from "@/types/recipe";
 
 type RecipeExportPayload = {
@@ -38,6 +39,10 @@ function isValidCategory(value: unknown): value is RecipeCategory {
   return value === "bakery" || value === "pastry";
 }
 
+function isValidScalingMode(value: unknown): value is RecipeScalingTarget["mode"] {
+  return value === "totalFlour" || value === "doughWeight" || value === "pieces";
+}
+
 function normalizeString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -48,6 +53,20 @@ function normalizeOptionalString(value: unknown) {
 
 function normalizeNameKey(value: string) {
   return value.trim().toLocaleLowerCase("es");
+}
+
+function validateScalingTargetPayload(value: unknown) {
+  if (!isObject(value) || !isValidScalingMode(value.mode)) {
+    return undefined;
+  }
+
+  return {
+    mode: value.mode,
+    totalFlour: typeof value.totalFlour === "number" ? value.totalFlour : undefined,
+    doughWeight: typeof value.doughWeight === "number" ? value.doughWeight : undefined,
+    pieces: typeof value.pieces === "number" ? value.pieces : undefined,
+    pieceWeight: typeof value.pieceWeight === "number" ? value.pieceWeight : undefined
+  } satisfies RecipeScalingTarget;
 }
 
 function validateIngredientPayload(
@@ -160,6 +179,10 @@ export function validateImportedRecipePayload(payload: unknown): Recipe {
     category: isValidCategory(recipePayload.category) ? recipePayload.category : "bakery",
     useAsPreferment:
       typeof recipePayload.useAsPreferment === "boolean" ? recipePayload.useAsPreferment : false,
+    scalingTarget: validateScalingTargetPayload(recipePayload.scalingTarget),
+    scalingSnapshotIngredients: Array.isArray(recipePayload.scalingSnapshotIngredients)
+      ? recipePayload.scalingSnapshotIngredients.map(validateIngredientPayload)
+      : undefined,
     ingredients: recipePayload.ingredients.map(validateIngredientPayload),
     createdAt: normalizeString(recipePayload.createdAt),
     updatedAt: normalizeString(recipePayload.updatedAt)
@@ -189,6 +212,14 @@ export function prepareImportedRecipe(recipe: Recipe, existingRecipes: Recipe[])
     description: recipe.description ?? "",
     notes: recipe.notes ?? "",
     category: recipe.category ?? "bakery",
+    scalingTarget: recipe.scalingTarget,
+    scalingSnapshotIngredients: recipe.scalingSnapshotIngredients?.map((ingredient) => ({
+      ...ingredient,
+      id: makeId(),
+      name: normalizeString(ingredient.name),
+      linkedRecipeId: normalizeString(ingredient.linkedRecipeId) || undefined,
+      linkedRecipeName: normalizeString(ingredient.linkedRecipeName) || undefined
+    })),
     ingredients: recipe.ingredients.map((ingredient) => ({
       ...ingredient,
       id: makeId(),

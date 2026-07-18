@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { IngredientEditor } from "@/components/IngredientEditor";
 import { MetricChip } from "@/components/MetricChip";
@@ -34,6 +34,8 @@ export default function RecipeFormScreen() {
   const [ingredients, setIngredients] = useState<RecipeIngredient[]>(
     existingRecipe?.ingredients ?? [emptyIngredient(), emptyIngredient()]
   );
+  const scalingTarget = existingRecipe?.scalingTarget;
+  const scalingSnapshotIngredients = existingRecipe?.scalingSnapshotIngredients;
 
   const stats = useMemo(() => {
     return {
@@ -89,6 +91,8 @@ export default function RecipeFormScreen() {
       notes,
       category,
       useAsPreferment,
+      scalingTarget,
+      scalingSnapshotIngredients,
       ingredients: normalizedIngredients
     };
 
@@ -162,18 +166,37 @@ export default function RecipeFormScreen() {
             })}
           </View>
         </View>
-        <View style={styles.switchRow}>
-          <View style={styles.switchCopy}>
-            <Text style={styles.switchTitle}>Usar como prefermento</Text>
-            <Text style={styles.switchHint}>
-              Permite elegir esta receta dentro de otra desde "Agregar prefermento".
-            </Text>
+        <View style={styles.prefermentGroup}>
+          <Text style={styles.sectionTitle}>Usar como prefermento</Text>
+          <Text style={styles.switchHint}>
+            Permiti usar esta receta dentro de otra formula, por ejemplo como poolish, biga o masa madre.
+          </Text>
+          <View style={styles.categoryRow}>
+            {[
+              { value: false, label: "No" },
+              { value: true, label: "Si" }
+            ].map((option) => {
+              const selected = useAsPreferment === option.value;
+
+              return (
+                <Pressable
+                  key={option.label}
+                  onPress={() => setUseAsPreferment(option.value)}
+                  style={({ pressed }) => [
+                    styles.categoryButton,
+                    selected && styles.categoryButtonActive,
+                    pressed && styles.categoryButtonPressed
+                  ]}
+                >
+                  <Text
+                    style={[styles.categoryButtonText, selected && styles.categoryButtonTextActive]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <Switch
-            onValueChange={setUseAsPreferment}
-            trackColor={{ false: theme.colors.surfaceMuted, true: "#B7C9CE" }}
-            value={useAsPreferment}
-          />
         </View>
       </View>
 
@@ -283,19 +306,10 @@ const styles = StyleSheet.create({
     minHeight: 120,
     textAlignVertical: "top"
   },
-  switchRow: {
-    alignItems: "center",
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.sm,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: theme.spacing.sm,
-    justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 12
-  },
   categoryGroup: {
+    gap: theme.spacing.xs
+  },
+  prefermentGroup: {
     gap: theme.spacing.xs
   },
   categoryRow: {
@@ -328,15 +342,6 @@ const styles = StyleSheet.create({
   },
   categoryButtonTextActive: {
     color: "#F8F5F1"
-  },
-  switchCopy: {
-    flex: 1,
-    gap: 4
-  },
-  switchTitle: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: "700"
   },
   switchHint: {
     color: theme.colors.textMuted,

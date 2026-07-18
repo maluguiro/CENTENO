@@ -1,4 +1,9 @@
-import type { IngredientRole, Recipe, RecipeIngredient } from "@/types/recipe";
+import type {
+  IngredientRole,
+  Recipe,
+  RecipeIngredient,
+  RecipeScalingTarget
+} from "@/types/recipe";
 
 const round = (value: number) => Math.round(value * 10) / 10;
 const flourRoles: IngredientRole[] = ["flour"];
@@ -54,6 +59,60 @@ export type IngredientDisplayBreakdown = {
   detail: string | null;
   warning: string | null;
 };
+
+export function getTargetDoughWeight(scalingTarget?: RecipeScalingTarget) {
+  if (!scalingTarget) {
+    return null;
+  }
+
+  if (scalingTarget.mode === "doughWeight") {
+    return scalingTarget.doughWeight && scalingTarget.doughWeight > 0
+      ? scalingTarget.doughWeight
+      : null;
+  }
+
+  if (scalingTarget.mode === "pieces") {
+    const pieces = scalingTarget.pieces ?? 0;
+    const pieceWeight = scalingTarget.pieceWeight ?? 0;
+    const target = pieces * pieceWeight;
+
+    return target > 0 ? target : null;
+  }
+
+  return null;
+}
+
+export function applyScalingTarget(
+  ingredients: RecipeIngredient[],
+  scalingTarget?: RecipeScalingTarget
+) {
+  if (!scalingTarget) {
+    return ingredients;
+  }
+
+  if (scalingTarget.mode === "totalFlour") {
+    const flourTarget = scalingTarget.totalFlour ?? 0;
+    return flourTarget > 0 ? applyScaleByTotalFlour(ingredients, flourTarget) : ingredients;
+  }
+
+  const doughWeightTarget = getTargetDoughWeight(scalingTarget);
+  if (!doughWeightTarget || doughWeightTarget <= 0) {
+    return ingredients;
+  }
+
+  const totalPercentage = ingredients.reduce(
+    (total, ingredient) => total + ingredient.bakerPercentage,
+    0
+  );
+
+  if (totalPercentage <= 0) {
+    return ingredients;
+  }
+
+  const flourTarget = round((doughWeightTarget * 100) / totalPercentage);
+
+  return applyScaleByTotalFlour(ingredients, flourTarget);
+}
 
 export function parseDecimalInput(value: string) {
   const normalized = value.trim().replace(",", ".");
@@ -413,7 +472,7 @@ export function getIngredientDisplayBreakdown(
   parentRecipeId?: string
 ): IngredientDisplayBreakdown {
   const prefersFlour = ingredient.role === "flour";
-  const prefersLiquid = ingredient.role === "water";
+  const prefersLiquid = liquidRoles.includes(ingredient.role);
 
   if (!prefersFlour && !prefersLiquid) {
     return {
@@ -443,8 +502,8 @@ export function getIngredientDisplayBreakdown(
   }
 
   const contributionShare = round((totalContribution * ingredient.quantity) / totalRequiredForRole);
-  const actualContribution = round(contributionShare);
-  const visibleQuantity = round(Math.max(0, ingredient.quantity - contributionShare));
+  const actualContribution = round(Math.min(contributionShare, ingredient.quantity));
+  const visibleQuantity = round(Math.max(0, ingredient.quantity - actualContribution));
   const exceeded = contributionShare > ingredient.quantity;
 
   return {
@@ -497,6 +556,38 @@ export function applyScaleByYield(
     ...ingredient,
     quantity: ingredient.scaledQuantity
   }));
+}
+
+export function buildScalingTargetLabel(scalingTarget?: RecipeScalingTarget) {
+  if (!scalingTarget) {
+    return null;
+  }
+
+  if (scalingTarget.mode === "pieces") {
+    const pieces = scalingTarget.pieces ?? 0;
+    const pieceWeight = scalingTarget.pieceWeight ?? 0;
+    const total = getTargetDoughWeight(scalingTarget) ?? 0;
+
+    if (pieces > 0 && pieceWeight > 0 && total > 0) {
+      return `Ajuste activo: ${pieces} piezas x ${round(pieceWeight)} g = ${round(total)} g`;
+    }
+  }
+
+  if (scalingTarget.mode === "doughWeight") {
+    const doughWeight = scalingTarget.doughWeight ?? 0;
+    if (doughWeight > 0) {
+      return `Objetivo: ${round(doughWeight)} g de masa`;
+    }
+  }
+
+  if (scalingTarget.mode === "totalFlour") {
+    const totalFlour = scalingTarget.totalFlour ?? 0;
+    if (totalFlour > 0) {
+      return `Objetivo: ${round(totalFlour)} g de harina`;
+    }
+  }
+
+  return null;
 }
 
 export function getRecipeSummary(recipe: Recipe) {
