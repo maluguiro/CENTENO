@@ -30,6 +30,10 @@
         "foregroundImage": "./assets/branding/centeno-adaptive-icon.png",
         "backgroundColor": "#F7F2E8"
       }
+    },
+    "ios": {
+      "bundleIdentifier": "com.maleguiro.centeno",
+      "supportsTablet": false
     }
   }
 }
