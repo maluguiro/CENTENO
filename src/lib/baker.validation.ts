@@ -10,6 +10,8 @@ import {
   getMoistureIndex,
   getPrefermentBreakdown,
   getQuantityFromBakerPercentage,
+  rebalanceFlourBlendPercentages,
+  recalculateBakerPercentagesFromQuantities,
   getScaledDoughWeight,
   getTotalFats,
   getTotalFlour,
@@ -347,6 +349,42 @@ function runActiveScalingTargetCase() {
   assertEqual(getDoughWeight(freed) !== 1800, true);
 }
 
+function runMultipleFloursCase() {
+  const ingredients: RecipeIngredient[] = [
+    ingredient("flour-1", "Harina 000", 500, "flour", 100),
+    ingredient("flour-2", "Harina integral", 200, "flour", 40),
+    ingredient("water", "Agua", 390, "water", 78),
+    ingredient("salt", "Sal", 14, "salt", 2.8)
+  ];
+
+  const recalculated = recalculateBakerPercentagesFromQuantities(ingredients);
+
+  assertEqual(getTotalFlour(recalculated), 700);
+  assertEqual(recalculated.find((item) => item.id === "flour-1")?.bakerPercentage, 71.4);
+  assertEqual(recalculated.find((item) => item.id === "flour-2")?.bakerPercentage, 28.6);
+  assertEqual(recalculated.find((item) => item.id === "water")?.bakerPercentage, 55.7);
+  assertEqual(recalculated.find((item) => item.id === "salt")?.bakerPercentage, 2);
+}
+
+function runMultipleFloursRebalanceCase() {
+  const ingredients: RecipeIngredient[] = [
+    ingredient("flour-1", "Harina 000", 700, "flour", 70),
+    ingredient("flour-2", "Harina integral", 300, "flour", 30),
+    ingredient("water", "Agua", 650, "water", 65),
+    ingredient("salt", "Sal", 20, "salt", 2)
+  ];
+
+  const rebalanced = rebalanceFlourBlendPercentages(ingredients, "flour-2", 40);
+
+  assertEqual(getTotalFlour(rebalanced), 1000);
+  assertEqual(rebalanced.find((item) => item.id === "flour-1")?.bakerPercentage, 60);
+  assertEqual(rebalanced.find((item) => item.id === "flour-1")?.quantity, 600);
+  assertEqual(rebalanced.find((item) => item.id === "flour-2")?.bakerPercentage, 40);
+  assertEqual(rebalanced.find((item) => item.id === "flour-2")?.quantity, 400);
+  assertEqual(rebalanced.find((item) => item.id === "water")?.quantity, 650);
+  assertEqual(rebalanced.find((item) => item.id === "salt")?.quantity, 20);
+}
+
 export function runBakerValidation() {
   runSimpleFormulaCase();
   runFatFormulaCase();
@@ -362,6 +400,8 @@ export function runBakerValidation() {
   runDecimalParsingCase();
   runAppliedScalingCases();
   runActiveScalingTargetCase();
+  runMultipleFloursCase();
+  runMultipleFloursRebalanceCase();
 
   return "baker validation passed";
 }

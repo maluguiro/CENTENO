@@ -187,6 +187,82 @@ export function updateIngredientFromQuantity(
   );
 }
 
+export function recalculateBakerPercentagesFromQuantities(
+  ingredients: RecipeIngredient[]
+) {
+  const flourTotal = getTotalFlour(ingredients);
+
+  if (flourTotal <= 0) {
+    return ingredients;
+  }
+
+  return ingredients.map((ingredient) => ({
+    ...ingredient,
+    bakerPercentage: getBakerPercentageFromQuantity(ingredient.quantity, flourTotal)
+  }));
+}
+
+export function rebalanceFlourBlendPercentages(
+  ingredients: RecipeIngredient[],
+  ingredientId: string,
+  nextPercentage: number
+) {
+  const flourIngredients = ingredients.filter((ingredient) => ingredient.role === "flour");
+  const flourTotal = getTotalFlour(ingredients);
+
+  if (flourIngredients.length <= 1 || flourTotal <= 0) {
+    return ingredients;
+  }
+
+  const clampedTargetPercentage = round(Math.max(0, Math.min(100, nextPercentage)));
+  const otherFlours = flourIngredients.filter((ingredient) => ingredient.id !== ingredientId);
+  const otherPercentageTotal = otherFlours.reduce(
+    (total, ingredient) => total + ingredient.bakerPercentage,
+    0
+  );
+  const remainingPercentage = round(Math.max(0, 100 - clampedTargetPercentage));
+
+  let remainingPool = remainingPercentage;
+
+  const nextFlourMap = new Map(
+    flourIngredients.map((ingredient, index) => {
+      if (ingredient.id === ingredientId) {
+        return [
+          ingredient.id,
+          {
+            ...ingredient,
+            bakerPercentage: clampedTargetPercentage,
+            quantity: getQuantityFromBakerPercentage(flourTotal, clampedTargetPercentage)
+          }
+        ] as const;
+      }
+
+      const otherIndex = otherFlours.findIndex((item) => item.id === ingredient.id);
+      const isLastOther = otherIndex === otherFlours.length - 1;
+      const proportionalPercentage =
+        otherPercentageTotal > 0
+          ? round((ingredient.bakerPercentage / otherPercentageTotal) * remainingPercentage)
+          : round(remainingPercentage / otherFlours.length);
+      const flourPercentage = isLastOther
+        ? remainingPool
+        : Math.max(0, Math.min(remainingPool, proportionalPercentage));
+
+      remainingPool = round(Math.max(0, remainingPool - flourPercentage));
+
+      return [
+        ingredient.id,
+        {
+          ...ingredient,
+          bakerPercentage: flourPercentage,
+          quantity: getQuantityFromBakerPercentage(flourTotal, flourPercentage)
+        }
+      ] as const;
+    })
+  );
+
+  return ingredients.map((ingredient) => nextFlourMap.get(ingredient.id) ?? ingredient);
+}
+
 export function getBaseIngredients(ingredients: RecipeIngredient[]) {
   return ingredients.filter((ingredient) => flourRoles.includes(ingredient.role));
 }

@@ -32,12 +32,15 @@ import {
   getMoistureIndex,
   getPrefermentBreakdown,
   getQuantityFromBakerPercentage,
+  rebalanceFlourBlendPercentages,
+  recalculateBakerPercentagesFromQuantities,
   getTotalFlour,
   getTotalLiquids,
   parseDecimalInput
 } from "@/lib/baker";
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { exportRecipeToJson } from "@/lib/recipeImportExport";
+import { moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
@@ -273,6 +276,13 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     setDoughTargetInput(formatDecimalInput(getDoughWeight(nextIngredients)));
   }
 
+  function syncPercentagesForMultiFlour(nextIngredients: RecipeIngredient[]) {
+    const flourCount = nextIngredients.filter((ingredient) => ingredient.role === "flour").length;
+    return flourCount > 1
+      ? recalculateBakerPercentagesFromQuantities(nextIngredients)
+      : nextIngredients;
+  }
+
   function updateRecipeIngredients(
     nextIngredients: RecipeIngredient[],
     nextNotes?: string,
@@ -373,6 +383,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       : [...recipe.ingredients, nextIngredient];
 
     if (
+      editingIngredientId &&
       nextIngredient.role === "flour" &&
       lastEditedField === "quantity" &&
       recipe.ingredients.filter((ingredient) => ingredient.role === "flour").length === 1
@@ -383,6 +394,20 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             ? { ...ingredient, name: nextIngredient.name, unit: nextIngredient.unit }
             : ingredient
       );
+    }
+
+    if (nextIngredient.role === "flour") {
+      const flourCount = nextIngredients.filter((ingredient) => ingredient.role === "flour").length;
+
+      if (lastEditedField === "percentage" && flourCount > 1) {
+        nextIngredients = rebalanceFlourBlendPercentages(
+          nextIngredients,
+          nextIngredient.id,
+          nextIngredient.bakerPercentage
+        );
+      } else {
+        nextIngredients = syncPercentagesForMultiFlour(nextIngredients);
+      }
     }
 
     const adjustedIngredients =
@@ -406,6 +431,27 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
 
     updateRecipeIngredients(
       recipe.scalingTarget ? applyScalingTarget(nextIngredients, recipe.scalingTarget) : nextIngredients
+    );
+    Keyboard.dismiss();
+    setIngredientVisible(false);
+  }
+
+  function moveIngredient(direction: "up" | "down") {
+    if (!editingIngredientId) {
+      return;
+    }
+
+    const nextIngredients = moveIngredientInList(recipe.ingredients, editingIngredientId, direction);
+
+    if (nextIngredients === recipe.ingredients) {
+      return;
+    }
+
+    updateRecipeIngredients(
+      nextIngredients,
+      undefined,
+      recipe.scalingTarget ?? null,
+      recipe.scalingSnapshotIngredients ?? null
     );
     Keyboard.dismiss();
     setIngredientVisible(false);
@@ -641,6 +687,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             <IngredientRow
               ingredient={ingredient}
               key={ingredient.id}
+              onBreakdownHelpPress={
+                displayBreakdown.detail ? () => setPrefermentHelpVisible(true) : undefined
+              }
               onPress={() => openEditIngredient(ingredient.id)}
               prefermentBreakdown={getPrefermentBreakdown(
                 ingredient,
@@ -648,9 +697,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 recipe.id
               )}
               quantityDetail={displayBreakdown.detail}
-              onBreakdownHelpPress={
-                displayBreakdown.detail ? () => setPrefermentHelpVisible(true) : undefined
-              }
               quantityOverride={displayBreakdown.visibleQuantity}
               quantityWarning={displayBreakdown.warning}
             />
@@ -707,6 +753,50 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               />
             ))}
           </View>
+          {editingIngredientId ? (
+            <View style={styles.reorderActions}>
+              <Pressable
+                disabled={recipe.ingredients[0]?.id === editingIngredientId}
+                onPress={() => moveIngredient("up")}
+                style={({ pressed }) => [
+                  styles.secondaryAction,
+                  recipe.ingredients[0]?.id === editingIngredientId && styles.secondaryActionDisabled,
+                  pressed && recipe.ingredients[0]?.id !== editingIngredientId && styles.secondaryActionPressed
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.secondaryActionLabel,
+                    recipe.ingredients[0]?.id === editingIngredientId && styles.secondaryActionLabelDisabled
+                  ]}
+                >
+                  ↑ Subir
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={recipe.ingredients[recipe.ingredients.length - 1]?.id === editingIngredientId}
+                onPress={() => moveIngredient("down")}
+                style={({ pressed }) => [
+                  styles.secondaryAction,
+                  recipe.ingredients[recipe.ingredients.length - 1]?.id === editingIngredientId &&
+                    styles.secondaryActionDisabled,
+                  pressed &&
+                    recipe.ingredients[recipe.ingredients.length - 1]?.id !== editingIngredientId &&
+                    styles.secondaryActionPressed
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.secondaryActionLabel,
+                    recipe.ingredients[recipe.ingredients.length - 1]?.id === editingIngredientId &&
+                      styles.secondaryActionLabelDisabled
+                  ]}
+                >
+                  ↓ Bajar
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
           <View style={styles.sheetActions}>
             {editingIngredientId ? (
               <Pressable
@@ -1796,6 +1886,11 @@ const styles = StyleSheet.create({
   helpButtonTextActive: {
     color: theme.colors.text
   },
+  reorderActions: {
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+    justifyContent: "flex-start"
+  },
   sheetActions: {
     alignItems: "center",
     flexDirection: "row",
@@ -1839,10 +1934,16 @@ const styles = StyleSheet.create({
   secondaryActionPressed: {
     opacity: theme.interaction.pressedOpacity
   },
+  secondaryActionDisabled: {
+    opacity: 0.45
+  },
   secondaryActionLabel: {
     color: theme.colors.text,
     fontSize: 13,
     fontWeight: "800"
+  },
+  secondaryActionLabelDisabled: {
+    color: theme.colors.textSoft
   },
   primaryAction: {
     backgroundColor: theme.colors.accentDeep,

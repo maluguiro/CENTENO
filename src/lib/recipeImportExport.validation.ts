@@ -3,6 +3,7 @@ import {
   parseImportedRecipe,
   prepareImportedRecipe
 } from "@/lib/recipeImportExport";
+import { moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { sampleRecipes } from "@/data/sampleRecipes";
 import { mergeMissingSampleRecipes } from "@/store/RecipesProvider";
@@ -135,6 +136,72 @@ function runRecipeValidation() {
   assert(
     preparedTwice.name === "Pan de campo (importada 2)",
     "El segundo duplicado debe usar sufijo importada 2."
+  );
+
+  const orderedRecipe: Recipe = {
+    ...baseRecipe,
+    ingredients: [
+      {
+        id: "water-1",
+        name: "Agua",
+        quantity: 300,
+        unit: "g",
+        role: "water",
+        bakerPercentage: 60
+      },
+      {
+        id: "flour-1",
+        name: "Harina",
+        quantity: 500,
+        unit: "g",
+        role: "flour",
+        bakerPercentage: 100
+      },
+      {
+        id: "salt-1",
+        name: "Sal",
+        quantity: 10,
+        unit: "g",
+        role: "salt",
+        bakerPercentage: 2
+      }
+    ]
+  };
+
+  const movedUp = moveIngredientInList(orderedRecipe.ingredients, "flour-1", "up");
+  assert(
+    movedUp.map((ingredient) => ingredient.id).join(",") === "flour-1,water-1,salt-1",
+    "Mover hacia arriba debe intercambiar posiciones."
+  );
+  assert(
+    movedUp[0].quantity === 500 && movedUp[0].bakerPercentage === 100,
+    "Mover no debe cambiar cantidades ni porcentajes."
+  );
+
+  const firstUp = moveIngredientInList(orderedRecipe.ingredients, "water-1", "up");
+  assert(
+    firstUp.map((ingredient) => ingredient.id).join(",") === "water-1,flour-1,salt-1",
+    "Mover el primero hacia arriba no debe cambiar nada."
+  );
+
+  const movedDown = moveIngredientInList(orderedRecipe.ingredients, "flour-1", "down");
+  assert(
+    movedDown.map((ingredient) => ingredient.id).join(",") === "water-1,salt-1,flour-1",
+    "Mover hacia abajo debe intercambiar posiciones."
+  );
+
+  const lastDown = moveIngredientInList(orderedRecipe.ingredients, "salt-1", "down");
+  assert(
+    lastDown.map((ingredient) => ingredient.id).join(",") === "water-1,flour-1,salt-1",
+    "Mover el ultimo hacia abajo no debe cambiar nada."
+  );
+
+  const exportedOrdered = exportRecipeToJson(orderedRecipe);
+  const importedOrdered = parseImportedRecipe(exportedOrdered);
+  assert(
+    importedOrdered.ingredients.map((ingredient) => ingredient.id).join(",") ===
+      "water-1,flour-1,salt-1",
+    "Exportar e importar debe conservar el orden de ingredientes."
   );
 
   const mergedSamples = mergeMissingSampleRecipes([baseRecipe], sampleRecipes);

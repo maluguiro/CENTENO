@@ -838,14 +838,7 @@ export default function HomeScreen() {
                 <Text style={styles.toolActionTitle}>Ver guia de uso</Text>
               </Pressable>
               <Pressable
-                onPress={() => {
-                  handleRestoreSamples();
-                  return;
-                  Alert.alert(
-                    "Ayuda",
-                    "CENTENO es una libreta de formulas panaderas.\n\nConceptos basicos:\n• La harina es la base 100%.\n• La hidratacion indica cuanta agua hay respecto de la harina.\n• Los porcentajes panaderos permiten escalar recetas sin perder proporciones.\n• Podes marcar recetas como Panaderia o Pasteleria.\n• Podes usar una receta como prefermento dentro de otra.\n• El detalle [total - aporte] muestra cuanto pide la formula total menos lo que ya aporta el prefermento.\n• Para guardar o compartir una receta, usa Exportar receta.\n• Para recuperar una receta o cargar una receta enviada por otra persona, usa Importar receta."
-                  );
-                }}
+                onPress={handleRestoreSamples}
                 style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
               >
                 <Text style={styles.toolActionTitle}>Restablecer recetas iniciales</Text>
@@ -937,34 +930,8 @@ export default function HomeScreen() {
                     prefermento y 400 g agregas aparte.
                   </Text>
                 </View>
-                {false ? (
-                  <>
-                <Text style={styles.helpItem}>• La harina es la base 100%.</Text>
-                <Text style={styles.helpItem}>
-                  • La hidratacion indica cuanta agua hay respecto de la harina.
-                </Text>
-                <Text style={styles.helpItem}>
-                  • Los porcentajes panaderos permiten escalar recetas sin perder proporciones.
-                </Text>
-                <Text style={styles.helpItem}>
-                  • Podes marcar recetas como Panaderia o Pasteleria.
-                </Text>
-                <Text style={styles.helpItem}>
-                  • Podes usar una receta como prefermento dentro de otra.
-                </Text>
-                <Text style={styles.helpItem}>
-                  • El detalle [total - aporte] muestra cuanto pide la formula total menos lo que
-                  ya aporta el prefermento.
-                </Text>
-                <Text style={styles.helpItem}>
-                  • Para guardar o compartir una receta, usa Exportar receta.
-                </Text>
-                <Text style={styles.helpItem}>
-                  • Para recuperar una receta o cargar una receta enviada por otra persona, usa
-                  Importar receta.
-                </Text>
-                  </>
-                ) : null}
+
+
               </View>
               <View style={styles.modalActions}>
                 <Pressable
