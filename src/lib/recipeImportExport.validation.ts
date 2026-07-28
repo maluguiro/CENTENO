@@ -3,6 +3,7 @@ import {
   parseImportedRecipe,
   prepareImportedRecipe
 } from "@/lib/recipeImportExport";
+import { buildCentenoFileName } from "@/lib/recipeFileShare";
 import { moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { sampleRecipes } from "@/data/sampleRecipes";
@@ -75,6 +76,22 @@ function runRecipeValidation() {
   assert(imported.useAsPreferment === false, "Import no conserva useAsPreferment.");
   assert(imported.scalingTarget?.mode === "pieces", "Import no conserva scalingTarget.");
   assert(imported.scalingTarget?.pieces === 2, "Import no conserva piezas.");
+  assert(
+    buildCentenoFileName("Focaccia") === "Focaccia.centeno",
+    "El nombre simple debe conservarse."
+  );
+  assert(
+    buildCentenoFileName("Pan de campo") === "Pan-de-campo.centeno",
+    "Los espacios deben sanitizarse."
+  );
+  assert(
+    buildCentenoFileName("Receta / rara : test") === "Receta-rara-test.centeno",
+    "Los caracteres invalidos deben sanitizarse."
+  );
+  assert(
+    buildCentenoFileName("") === "receta-centeno.centeno",
+    "El nombre vacio debe usar fallback."
+  );
 
   const shareText = formatRecipeAsShareText(baseRecipe, [baseRecipe]);
   assert(shareText.length > 0, "El texto compartible no debe estar vacio.");

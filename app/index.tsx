@@ -25,6 +25,7 @@ import {
 } from "@/components/GuideModal";
 import { setClipboardText } from "@/lib/clipboard";
 import { getGuideSeen, setGuideSeen } from "@/lib/guideStorage";
+import { pickCentenoRecipeFileContent, shareCentenoRecipeFile } from "@/lib/recipeFileShare";
 import { exportRecipeToJson } from "@/lib/recipeImportExport";
 import { getClipboardText } from "@/lib/clipboard";
 import {
@@ -86,7 +87,8 @@ function buildDuplicateRecipeName(name: string, recipes: Recipe[]) {
   return `${baseName} (copia ${index})`;
 }
 
-type HomeExportMode = "selector" | "shareText" | "importCode" | null;
+type HomeExportMode = "selector" | "shareText" | "centenoFile" | "importCode" | null;
+type HomeImportMode = "selector" | "backupCode";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -106,6 +108,7 @@ export default function HomeScreen() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
+  const [importMode, setImportMode] = useState<HomeImportMode>("selector");
   const [quickRecipeId, setQuickRecipeId] = useState<string | null>(null);
   const [quickExportMode, setQuickExportMode] = useState<HomeExportMode>(null);
   const [quickExportJson, setQuickExportJson] = useState("");
@@ -232,6 +235,7 @@ export default function HomeScreen() {
   function closeImportModal() {
     Keyboard.dismiss();
     setImportVisible(false);
+    setImportMode("selector");
     setImportError("");
     setImportInput("");
     setImportPasteFeedback("");
@@ -300,7 +304,7 @@ export default function HomeScreen() {
       Alert.alert("Receta importada correctamente.");
     } catch {
       setImportError(
-        "No se pudo importar la receta. Asegurate de pegar el codigo para importar, no el texto compartido."
+        "No se pudo importar la receta. Asegurate de pegar el codigo completo para importar."
       );
     }
   }
@@ -325,6 +329,7 @@ export default function HomeScreen() {
 
   function openImportFromSettings() {
     setSettingsVisible(false);
+    setImportMode("selector");
     setImportVisible(true);
   }
 
@@ -413,6 +418,46 @@ export default function HomeScreen() {
     }
 
     showQuickCopyFeedback(mode);
+  }
+
+  async function handleShareQuickRecipeFile() {
+    if (!quickRecipe) {
+      return;
+    }
+
+    try {
+      await shareCentenoRecipeFile(quickRecipe);
+      closeQuickExport();
+      closeQuickActions();
+    } catch (error) {
+      if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
+        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
+        return;
+      }
+
+      Alert.alert("No se pudo crear el archivo de la receta.");
+    }
+  }
+
+  async function handleImportRecipeFile() {
+    try {
+      const result = await pickCentenoRecipeFileContent();
+
+      if (result.status === "cancel") {
+        return;
+      }
+
+      const parsedRecipe = parseImportedRecipe(result.content);
+      const preparedRecipe = prepareImportedRecipe(parsedRecipe, recipes);
+
+      importRecipe(preparedRecipe);
+      closeImportModal();
+      Alert.alert("Receta importada correctamente.");
+    } catch {
+      setImportError(
+        "No se pudo importar el archivo. Asegurate de elegir un archivo exportado desde CENTENO."
+      );
+    }
   }
 
   function handleEditQuickRecipe() {
@@ -541,7 +586,7 @@ export default function HomeScreen() {
             </View>
             <View style={styles.brandCopy}>
               <Text style={styles.brand}>CENTENO</Text>
-              <Text style={styles.brandSubtle}>Formulas panaderas para obrador</Text>
+              <Text style={styles.brandSubtle}>Tu libreta de formulas panaderas</Text>
             </View>
           </View>
         </View>
@@ -672,30 +717,39 @@ export default function HomeScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {quickExportMode === "selector" ? (
-                <>
-                  <Text style={styles.modalTitle}>Exportar receta</Text>
-                  <Text style={styles.modalHelper}>
-                    Elegi como queres compartir esta receta.
+                {quickExportMode === "selector" ? (
+                  <>
+                    <Text style={styles.modalTitle}>Exportar receta</Text>
+                    <Text style={styles.modalHelper}>
+                      Elegi como queres compartir esta receta.
                   </Text>
                   <Pressable
                     onPress={() => setQuickExportMode("shareText")}
                     style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
                   >
                     <Text style={styles.exportOptionTitle}>Compartir como texto</Text>
-                    <Text style={styles.exportOptionDescription}>
-                      Para WhatsApp, notas o imprimir.
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setQuickExportMode("importCode")}
-                    style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
-                  >
-                    <Text style={styles.exportOptionTitle}>Codigo para importar</Text>
-                    <Text style={styles.exportOptionDescription}>
-                      Para cargar esta receta en otro CENTENO.
-                    </Text>
-                  </Pressable>
+                      <Text style={styles.exportOptionDescription}>
+                        Para WhatsApp, notas o imprimir.
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setQuickExportMode("centenoFile")}
+                      style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                    >
+                      <Text style={styles.exportOptionTitle}>Compartir archivo CENTENO</Text>
+                      <Text style={styles.exportOptionDescription}>
+                        Para importar en otra instalacion de CENTENO.
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setQuickExportMode("importCode")}
+                      style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                    >
+                      <Text style={styles.exportOptionTitle}>Codigo de respaldo</Text>
+                      <Text style={styles.exportOptionDescription}>
+                        Opcion avanzada para copiar y pegar.
+                      </Text>
+                    </Pressable>
                   <View style={styles.modalActions}>
                     <Pressable
                       onPress={closeQuickExport}
@@ -704,11 +758,37 @@ export default function HomeScreen() {
                       <Text style={styles.textActionLabel}>Cerrar</Text>
                     </Pressable>
                   </View>
-                </>
-              ) : null}
+                  </>
+                ) : null}
 
-              {quickExportMode === "shareText" ? (
-                <>
+                {quickExportMode === "centenoFile" ? (
+                  <>
+                    <Text style={styles.modalTitle}>Compartir archivo CENTENO</Text>
+                    <Text style={styles.modalHelper}>
+                      Se va a crear un archivo .centeno para importarlo en otra instalacion de CENTENO.
+                    </Text>
+                    <View style={styles.modalActions}>
+                      <Pressable
+                        onPress={() => setQuickExportMode("selector")}
+                        style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                      >
+                        <Text style={styles.textActionLabel}>Volver</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={handleShareQuickRecipeFile}
+                        style={({ pressed }) => [
+                          styles.secondaryFilledAction,
+                          pressed && styles.secondaryFilledActionPressed
+                        ]}
+                      >
+                        <Text style={styles.secondaryFilledActionLabel}>Compartir archivo</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : null}
+
+                {quickExportMode === "shareText" ? (
+                  <>
                   <Text style={styles.modalTitle}>Compartir como texto</Text>
                   <Text style={styles.modalHelper}>
                     Copia esta receta para enviarla por WhatsApp o guardarla en notas.
@@ -751,12 +831,12 @@ export default function HomeScreen() {
                 </>
               ) : null}
 
-              {quickExportMode === "importCode" ? (
-                <>
-                  <Text style={styles.modalTitle}>Codigo para importar</Text>
-                  <Text style={styles.modalHelper}>
-                    Copia este codigo completo para cargar la receta en otro CENTENO.
-                  </Text>
+                {quickExportMode === "importCode" ? (
+                  <>
+                    <Text style={styles.modalTitle}>Codigo de respaldo</Text>
+                    <Text style={styles.modalHelper}>
+                      Copia este codigo completo para cargar la receta en otro CENTENO.
+                    </Text>
                   <View style={styles.modalActionsStart}>
                     <Pressable
                       onPress={() => handleCopyQuickExport(quickExportJson, "importCode")}
@@ -1050,56 +1130,110 @@ export default function HomeScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.modalTitle}>Importar receta</Text>
-              <Text style={styles.modalHelper}>
-                Pega aca el codigo completo para importar generado por CENTENO.
-              </Text>
-              <View style={styles.modalActionsStart}>
-                <Pressable
-                  onPress={handlePasteImport}
-                  style={({ pressed }) => [
-                    styles.secondaryFilledAction,
-                    pressed && styles.secondaryFilledActionPressed
-                  ]}
-                >
-                  <Text style={styles.secondaryFilledActionLabel}>Pegar</Text>
-                </Pressable>
-              </View>
-              <TextInput
-                multiline
-                onChangeText={(value) => {
-                  setImportInput(value);
-                  if (importError) {
-                    setImportError("");
-                  }
-                }}
-                placeholder="Pega aqui el codigo para importar"
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.modalInput, styles.importField]}
-                textAlignVertical="top"
-                value={importInput}
-              />
-              {importPasteFeedback ? (
-                <Text style={styles.modalHelper}>{importPasteFeedback}</Text>
+              {importMode === "selector" ? (
+                <>
+                  <Text style={styles.modalTitle}>Importar receta</Text>
+                  <Text style={styles.modalHelper}>
+                    Elegi como queres importar esta receta.
+                  </Text>
+                  <Pressable
+                    onPress={handleImportRecipeFile}
+                    style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                  >
+                    <Text style={styles.exportOptionTitle}>Importar archivo CENTENO</Text>
+                    <Text style={styles.exportOptionDescription}>
+                      Elegi un archivo .centeno.
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setImportError("");
+                      setImportPasteFeedback("");
+                      setImportMode("backupCode");
+                    }}
+                    style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                  >
+                    <Text style={styles.exportOptionTitle}>Pegar codigo de respaldo</Text>
+                    <Text style={styles.exportOptionDescription}>
+                      Usa esta opcion si recibiste un codigo manual.
+                    </Text>
+                  </Pressable>
+                  {importError ? <Text style={styles.importError}>{importError}</Text> : null}
+                  <View style={styles.modalActions}>
+                    <Pressable
+                      onPress={closeImportModal}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Cerrar</Text>
+                    </Pressable>
+                  </View>
+                </>
               ) : null}
-              {importError ? <Text style={styles.importError}>{importError}</Text> : null}
-              <View style={styles.modalActions}>
-                <Pressable
-                  onPress={closeImportModal}
-                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-                >
-                  <Text style={styles.textActionLabel}>Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleImportRecipe}
-                  style={({ pressed }) => [
-                    styles.primaryAction,
-                    pressed && styles.primaryActionPressed
-                  ]}
-                >
-                  <Text style={styles.primaryActionLabel}>Importar</Text>
-                </Pressable>
-              </View>
+
+              {importMode === "backupCode" ? (
+                <>
+                  <Text style={styles.modalTitle}>Importar receta</Text>
+                  <Text style={styles.modalHelper}>
+                    Pega aca el codigo para importar generado por CENTENO.
+                  </Text>
+                  <View style={styles.modalActionsStart}>
+                    <Pressable
+                      onPress={handlePasteImport}
+                      style={({ pressed }) => [
+                        styles.secondaryFilledAction,
+                        pressed && styles.secondaryFilledActionPressed
+                      ]}
+                    >
+                      <Text style={styles.secondaryFilledActionLabel}>Pegar</Text>
+                    </Pressable>
+                  </View>
+                  <TextInput
+                    multiline
+                    onChangeText={(value) => {
+                      setImportInput(value);
+                      if (importError) {
+                        setImportError("");
+                      }
+                    }}
+                    placeholder="Pega aqui el codigo para importar"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[styles.modalInput, styles.importField]}
+                    textAlignVertical="top"
+                    value={importInput}
+                  />
+                  {importPasteFeedback ? (
+                    <Text style={styles.modalHelper}>{importPasteFeedback}</Text>
+                  ) : null}
+                  {importError ? <Text style={styles.importError}>{importError}</Text> : null}
+                  <View style={styles.modalActions}>
+                    <Pressable
+                      onPress={() => {
+                        setImportError("");
+                        setImportPasteFeedback("");
+                        setImportMode("selector");
+                      }}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Volver</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={closeImportModal}
+                      style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                    >
+                      <Text style={styles.textActionLabel}>Cancelar</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleImportRecipe}
+                      style={({ pressed }) => [
+                        styles.primaryAction,
+                        pressed && styles.primaryActionPressed
+                      ]}
+                    >
+                      <Text style={styles.primaryActionLabel}>Importar</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
             </ScrollView>
           </View>
         </KeyboardAvoidingView>

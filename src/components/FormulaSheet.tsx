@@ -39,6 +39,7 @@ import {
   parseDecimalInput
 } from "@/lib/baker";
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
+import { shareCentenoRecipeFile } from "@/lib/recipeFileShare";
 import { exportRecipeToJson } from "@/lib/recipeImportExport";
 import { moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
@@ -56,7 +57,7 @@ import type {
 type ScaleMode = "flour" | "dough" | "yield";
 type PrefermentMode = "grams" | "percent";
 type IngredientField = "quantity" | "percentage" | null;
-type ExportMode = "selector" | "shareText" | "importCode" | null;
+type ExportMode = "selector" | "shareText" | "centenoFile" | "importCode" | null;
 type PrefermentContextKind = "flour" | "water";
 
 const roles: IngredientRole[] = [
@@ -506,6 +507,20 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     }, 1500);
   }
 
+  async function handleShareRecipeFile() {
+    try {
+      await shareCentenoRecipeFile(recipe);
+      setExportMode(null);
+    } catch (error) {
+      if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
+        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
+        return;
+      }
+
+      Alert.alert("No se pudo crear el archivo de la receta.");
+    }
+  }
+
   function saveNotes() {
     updateRecipeIngredients(recipe.ingredients, notesDraft);
     Keyboard.dismiss();
@@ -888,15 +903,27 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 </Text>
               </Pressable>
               <Pressable
+                onPress={() => setExportMode("centenoFile")}
+                style={({ pressed }) => [
+                  styles.exportOption,
+                  pressed && styles.menuActionPressed
+                ]}
+              >
+                <Text style={styles.exportOptionTitle}>Compartir archivo CENTENO</Text>
+                <Text style={styles.exportOptionDescription}>
+                  Para importar en otra instalacion de CENTENO.
+                </Text>
+              </Pressable>
+              <Pressable
                 onPress={() => setExportMode("importCode")}
                 style={({ pressed }) => [
                   styles.exportOption,
                   pressed && styles.menuActionPressed
                 ]}
               >
-                <Text style={styles.exportOptionTitle}>Codigo para importar</Text>
+                <Text style={styles.exportOptionTitle}>Codigo de respaldo</Text>
                 <Text style={styles.exportOptionDescription}>
-                  Para cargar esta receta en otro CENTENO.
+                  Opcion avanzada para copiar y pegar.
                 </Text>
               </Pressable>
               <View style={styles.sheetActions}>
@@ -905,6 +932,29 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                   style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
                 >
                   <Text style={styles.textActionLabel}>Cerrar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+
+          {exportMode === "centenoFile" ? (
+            <>
+              <Text style={styles.sheetTitle}>Compartir archivo CENTENO</Text>
+              <Text style={styles.helperText}>
+                Se va a crear un archivo .centeno para importarlo en otra instalacion de CENTENO.
+              </Text>
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={() => setExportMode("selector")}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Volver</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleShareRecipeFile}
+                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                >
+                  <Text style={styles.primaryActionLabel}>Compartir archivo</Text>
                 </Pressable>
               </View>
             </>
@@ -956,9 +1006,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
 
           {exportMode === "importCode" ? (
             <>
-              <Text style={styles.sheetTitle}>Codigo para importar</Text>
+              <Text style={styles.sheetTitle}>Codigo de respaldo</Text>
               <Text style={styles.helperText}>
-                Copia este codigo para cargar la receta en otro CENTENO.
+                Copia este codigo completo para cargar la receta en otro CENTENO.
               </Text>
               <View style={styles.copyActionRow}>
                 <Pressable
