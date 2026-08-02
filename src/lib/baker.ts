@@ -60,6 +60,38 @@ export type IngredientDisplayBreakdown = {
   warning: string | null;
 };
 
+type BreakdownTargetKind = "flour" | "liquids";
+
+function getFlourIngredients(ingredients: RecipeIngredient[]) {
+  return ingredients.filter((ingredient) => flourRoles.includes(ingredient.role));
+}
+
+function getPrimaryFlourIngredient(ingredients: RecipeIngredient[]) {
+  return getFlourIngredients(ingredients)[0] ?? null;
+}
+
+export function getPrimaryFlourQuantity(ingredients: RecipeIngredient[]) {
+  return round(getPrimaryFlourIngredient(ingredients)?.quantity ?? 0);
+}
+
+export function isPrimaryFlourIngredient(
+  ingredients: RecipeIngredient[],
+  ingredientId: string
+) {
+  return getPrimaryFlourIngredient(ingredients)?.id === ingredientId;
+}
+
+function getIngredientPercentageBaseQuantity(
+  ingredients: RecipeIngredient[],
+  ingredient: Pick<RecipeIngredient, "id" | "role">
+) {
+  if (ingredient.role === "flour") {
+    return getPrimaryFlourQuantity(ingredients);
+  }
+
+  return getTotalFlour(ingredients);
+}
+
 export function getTargetDoughWeight(scalingTarget?: RecipeScalingTarget) {
   if (!scalingTarget) {
     return null;
@@ -84,7 +116,9 @@ export function getTargetDoughWeight(scalingTarget?: RecipeScalingTarget) {
 
 export function applyScalingTarget(
   ingredients: RecipeIngredient[],
-  scalingTarget?: RecipeScalingTarget
+  scalingTarget?: RecipeScalingTarget,
+  recipeLookup?: RecipeLookup,
+  parentRecipeId?: string
 ) {
   if (!scalingTarget) {
     return ingredients;
@@ -100,18 +134,7 @@ export function applyScalingTarget(
     return ingredients;
   }
 
-  const totalPercentage = ingredients.reduce(
-    (total, ingredient) => total + ingredient.bakerPercentage,
-    0
-  );
-
-  if (totalPercentage <= 0) {
-    return ingredients;
-  }
-
-  const flourTarget = round((doughWeightTarget * 100) / totalPercentage);
-
-  return applyScaleByTotalFlour(ingredients, flourTarget);
+  return applyScaleByDoughWeight(ingredients, doughWeightTarget, recipeLookup, parentRecipeId);
 }
 
 export function parseDecimalInput(value: string) {
@@ -141,14 +164,70 @@ export function getBakerPercentageFromQuantity(quantity: number, flourTotal: num
   return round((quantity / flourTotal) * 100);
 }
 
+export function getIngredientQuantityFromBakerPercentage(
+  ingredients: RecipeIngredient[],
+  ingredient: Pick<RecipeIngredient, "id" | "role">,
+  bakerPercentage: number
+) {
+  if (ingredient.role === "flour" && isPrimaryFlourIngredient(ingredients, ingredient.id)) {
+    return getPrimaryFlourQuantity(ingredients);
+  }
+
+  return getQuantityFromBakerPercentage(
+    getIngredientPercentageBaseQuantity(ingredients, ingredient),
+    bakerPercentage
+  );
+}
+
+export function getIngredientBakerPercentageFromQuantity(
+  ingredients: RecipeIngredient[],
+  ingredient: Pick<RecipeIngredient, "id" | "role">,
+  quantity: number
+) {
+  if (ingredient.role === "flour" && isPrimaryFlourIngredient(ingredients, ingredient.id)) {
+    return quantity > 0 ? 100 : 0;
+  }
+
+  return getBakerPercentageFromQuantity(
+    quantity,
+    getIngredientPercentageBaseQuantity(ingredients, ingredient)
+  );
+}
+
 export function normalizeIngredientsFromFlour(
   ingredients: RecipeIngredient[],
   flourTotal: number
 ) {
-  return ingredients.map((ingredient) => ({
-    ...ingredient,
-    quantity: getQuantityFromBakerPercentage(flourTotal, ingredient.bakerPercentage)
-  }));
+  const primaryFlour = getPrimaryFlourIngredient(ingredients);
+  const flourPercentageTotal = getFlourIngredients(ingredients)
+    .filter((ingredient) => ingredient.id !== primaryFlour?.id)
+    .reduce((total, ingredient) => total + ingredient.bakerPercentage, 0);
+  const primaryFlourTarget =
+    primaryFlour && flourTotal > 0
+      ? round(flourTotal / (1 + flourPercentageTotal / 100))
+      : 0;
+
+  return ingredients.map((ingredient) => {
+    if (ingredient.role === "flour") {
+      if (primaryFlour?.id === ingredient.id) {
+        return {
+          ...ingredient,
+          quantity: primaryFlourTarget,
+          bakerPercentage: primaryFlourTarget > 0 ? 100 : 0
+        };
+      }
+
+      return {
+        ...ingredient,
+        quantity: getQuantityFromBakerPercentage(primaryFlourTarget, ingredient.bakerPercentage)
+      };
+    }
+
+    return {
+      ...ingredient,
+      quantity: getQuantityFromBakerPercentage(flourTotal, ingredient.bakerPercentage)
+    };
+  });
 }
 
 export function updateIngredientFromPercentage(
@@ -156,17 +235,26 @@ export function updateIngredientFromPercentage(
   ingredientId: string,
   bakerPercentage: number
 ) {
-  const flourTotal = getTotalFlour(ingredients);
+  const nextIngredients = ingredients.map((ingredient) => {
+    if (ingredient.id !== ingredientId) {
+      return ingredient;
+    }
 
-  return ingredients.map((ingredient) =>
-    ingredient.id === ingredientId
-      ? {
-          ...ingredient,
-          bakerPercentage,
-          quantity: getQuantityFromBakerPercentage(flourTotal, bakerPercentage)
-        }
-      : ingredient
-  );
+    if (ingredient.role === "flour" && isPrimaryFlourIngredient(ingredients, ingredient.id)) {
+      return {
+        ...ingredient,
+        bakerPercentage: ingredient.quantity > 0 ? 100 : 0
+      };
+    }
+
+    return {
+      ...ingredient,
+      bakerPercentage,
+      quantity: getIngredientQuantityFromBakerPercentage(ingredients, ingredient, bakerPercentage)
+    };
+  });
+
+  return recalculateBakerPercentagesFromQuantities(nextIngredients);
 }
 
 export function updateIngredientFromQuantity(
@@ -174,31 +262,37 @@ export function updateIngredientFromQuantity(
   ingredientId: string,
   quantity: number
 ) {
-  const flourTotal = getTotalFlour(ingredients);
-
-  return ingredients.map((ingredient) =>
+  const nextIngredients = ingredients.map((ingredient) =>
     ingredient.id === ingredientId
       ? {
           ...ingredient,
-          quantity: round(quantity),
-          bakerPercentage: getBakerPercentageFromQuantity(quantity, flourTotal)
+          quantity: round(quantity)
         }
       : ingredient
   );
+
+  return recalculateBakerPercentagesFromQuantities(nextIngredients);
 }
 
 export function recalculateBakerPercentagesFromQuantities(
   ingredients: RecipeIngredient[]
 ) {
-  const flourTotal = getTotalFlour(ingredients);
+  const primaryFlour = getPrimaryFlourIngredient(ingredients);
+  const primaryFlourQuantity = getPrimaryFlourQuantity(ingredients);
+  const totalFlour = getTotalFlour(ingredients);
 
-  if (flourTotal <= 0) {
+  if (!primaryFlour || primaryFlourQuantity <= 0) {
     return ingredients;
   }
 
   return ingredients.map((ingredient) => ({
     ...ingredient,
-    bakerPercentage: getBakerPercentageFromQuantity(ingredient.quantity, flourTotal)
+    bakerPercentage:
+      ingredient.role === "flour"
+        ? ingredient.id === primaryFlour.id
+          ? 100
+          : getBakerPercentageFromQuantity(ingredient.quantity, primaryFlourQuantity)
+        : getBakerPercentageFromQuantity(ingredient.quantity, totalFlour)
   }));
 }
 
@@ -207,78 +301,47 @@ export function rebalanceFlourBlendPercentages(
   ingredientId: string,
   nextPercentage: number
 ) {
-  const flourIngredients = ingredients.filter((ingredient) => ingredient.role === "flour");
-  const flourTotal = getTotalFlour(ingredients);
+  const primaryFlour = getPrimaryFlourIngredient(ingredients);
+  const primaryFlourQuantity = getPrimaryFlourQuantity(ingredients);
 
-  if (flourIngredients.length <= 1 || flourTotal <= 0) {
+  if (!primaryFlour || primaryFlourQuantity <= 0) {
     return ingredients;
   }
 
-  const clampedTargetPercentage = round(Math.max(0, Math.min(100, nextPercentage)));
-  const otherFlours = flourIngredients.filter((ingredient) => ingredient.id !== ingredientId);
-  const otherPercentageTotal = otherFlours.reduce(
-    (total, ingredient) => total + ingredient.bakerPercentage,
-    0
-  );
-  const remainingPercentage = round(Math.max(0, 100 - clampedTargetPercentage));
+  const clampedTargetPercentage = round(Math.max(0, nextPercentage));
+  const nextIngredients = ingredients.map((ingredient) => {
+    if (ingredient.id !== ingredientId || ingredient.role !== "flour") {
+      return ingredient;
+    }
 
-  let remainingPool = remainingPercentage;
+    if (ingredient.id === primaryFlour.id) {
+      return {
+        ...ingredient,
+        bakerPercentage: 100
+      };
+    }
 
-  const nextFlourMap = new Map(
-    flourIngredients.map((ingredient, index) => {
-      if (ingredient.id === ingredientId) {
-        return [
-          ingredient.id,
-          {
-            ...ingredient,
-            bakerPercentage: clampedTargetPercentage,
-            quantity: getQuantityFromBakerPercentage(flourTotal, clampedTargetPercentage)
-          }
-        ] as const;
-      }
+    return {
+      ...ingredient,
+      bakerPercentage: clampedTargetPercentage,
+      quantity: getQuantityFromBakerPercentage(primaryFlourQuantity, clampedTargetPercentage)
+    };
+  });
 
-      const otherIndex = otherFlours.findIndex((item) => item.id === ingredient.id);
-      const isLastOther = otherIndex === otherFlours.length - 1;
-      const proportionalPercentage =
-        otherPercentageTotal > 0
-          ? round((ingredient.bakerPercentage / otherPercentageTotal) * remainingPercentage)
-          : round(remainingPercentage / otherFlours.length);
-      const flourPercentage = isLastOther
-        ? remainingPool
-        : Math.max(0, Math.min(remainingPool, proportionalPercentage));
-
-      remainingPool = round(Math.max(0, remainingPool - flourPercentage));
-
-      return [
-        ingredient.id,
-        {
-          ...ingredient,
-          bakerPercentage: flourPercentage,
-          quantity: getQuantityFromBakerPercentage(flourTotal, flourPercentage)
-        }
-      ] as const;
-    })
-  );
-
-  return ingredients.map((ingredient) => nextFlourMap.get(ingredient.id) ?? ingredient);
+  return recalculateBakerPercentagesFromQuantities(nextIngredients);
 }
 
 export function getBaseIngredients(ingredients: RecipeIngredient[]) {
-  return ingredients.filter((ingredient) => flourRoles.includes(ingredient.role));
+  const primaryFlour = getPrimaryFlourIngredient(ingredients);
+  return primaryFlour ? [primaryFlour] : [];
 }
 
 export function getBasePercent(ingredients: RecipeIngredient[]) {
-  return getBaseIngredients(ingredients).reduce(
-    (total, ingredient) => total + ingredient.bakerPercentage,
-    0
-  );
+  return getBaseIngredients(ingredients).length ? 100 : 0;
 }
 
 export function getBaseQuantity(ingredients: RecipeIngredient[]) {
-  return getBaseIngredients(ingredients).reduce(
-    (total, ingredient) => total + ingredient.quantity,
-    0
-  );
+  return getPrimaryFlourQuantity(ingredients);
 }
 
 export function getTotalFlour(ingredients: RecipeIngredient[]) {
@@ -309,16 +372,20 @@ export function scaleIngredients(
   ingredients: RecipeIngredient[],
   flourTarget: number
 ) {
-  if (flourTarget <= 0 || getTotalFlour(ingredients) <= 0) {
+  const currentTotalFlour = getTotalFlour(ingredients);
+
+  if (flourTarget <= 0 || currentTotalFlour <= 0) {
     return ingredients.map((ingredient) => ({
       ...ingredient,
       scaledQuantity: 0
     }));
   }
 
+  const factor = flourTarget / currentTotalFlour;
+
   return ingredients.map((ingredient) => ({
     ...ingredient,
-    scaledQuantity: getQuantityFromBakerPercentage(flourTarget, ingredient.bakerPercentage)
+    scaledQuantity: round(ingredient.quantity * factor)
   }));
 }
 
@@ -331,9 +398,11 @@ export function scaleByTotalFlour(
 
 export function scaleByDoughWeight(
   ingredients: RecipeIngredient[],
-  doughWeightTarget: number
+  doughWeightTarget: number,
+  recipeLookup?: RecipeLookup,
+  parentRecipeId?: string
 ) {
-  const currentDoughWeight = getDoughWeight(ingredients);
+  const currentDoughWeight = getDoughWeight(ingredients, recipeLookup, parentRecipeId);
 
   if (currentDoughWeight <= 0) {
     return ingredients.map((ingredient) => ({
@@ -353,11 +422,13 @@ export function scaleByDoughWeight(
 export function scaleByYield(
   ingredients: RecipeIngredient[],
   pieceCount: number,
-  pieceWeight: number
+  pieceWeight: number,
+  recipeLookup?: RecipeLookup,
+  parentRecipeId?: string
 ) {
   const doughWeightTarget = pieceCount * pieceWeight;
 
-  return scaleByDoughWeight(ingredients, doughWeightTarget);
+  return scaleByDoughWeight(ingredients, doughWeightTarget, recipeLookup, parentRecipeId);
 }
 
 export function getHydrationPercentage(ingredients: RecipeIngredient[]) {
@@ -366,13 +437,7 @@ export function getHydrationPercentage(ingredients: RecipeIngredient[]) {
     return 0;
   }
 
-  const liquidPercent = round(
-    ingredients
-    .filter((ingredient) => liquidRoles.includes(ingredient.role))
-    .reduce((total, ingredient) => total + ingredient.bakerPercentage, 0)
-  );
-
-  return liquidPercent;
+  return round((getTotalLiquids(ingredients) / flourTotal) * 100);
 }
 
 export function getHydrationPercent(ingredients: RecipeIngredient[]) {
@@ -392,13 +457,23 @@ export function getMoistureIndex(ingredients: RecipeIngredient[]) {
   );
 }
 
-export function getDoughWeight(ingredients: RecipeIngredient[]) {
-  return round(
-    ingredients.reduce((total, ingredient) => total + ingredient.quantity, 0)
-  );
+export function getDoughWeight(
+  ingredients: RecipeIngredient[],
+  recipeLookup?: RecipeLookup,
+  parentRecipeId?: string
+) {
+  const totalWeight = ingredients.reduce((total, ingredient) => total + ingredient.quantity, 0);
+
+  if (!recipeLookup) {
+    return round(totalWeight);
+  }
+
+  const contributions = getPrefermentContributionTotals(ingredients, recipeLookup, parentRecipeId);
+
+  return round(totalWeight - contributions.flour - contributions.liquids);
 }
 
-export function getRecipeComposition(
+function getExpandedRecipeComposition(
   recipe: Recipe,
   recipeLookup?: RecipeLookup,
   visitedRecipeIds: string[] = []
@@ -433,7 +508,7 @@ export function getRecipeComposition(
       continue;
     }
 
-    const linkedComposition = getRecipeComposition(
+    const linkedComposition = getExpandedRecipeComposition(
       linkedRecipe,
       recipeLookup,
       Array.from(trail)
@@ -448,12 +523,43 @@ export function getRecipeComposition(
     liquids += linkedComposition.liquids * factor;
   }
 
-  const doughWeight = getDoughWeight(recipe.ingredients);
+  const doughWeight = getDoughWeight(
+    recipe.ingredients,
+    recipeLookup,
+    recipe.id
+  );
 
   return {
     flour: round(flour),
     liquids: round(liquids),
     doughWeight,
+    hydration: flour > 0 ? round((liquids / flour) * 100) : 0
+  };
+}
+
+export function getRecipeComposition(
+  recipe: Recipe,
+  recipeLookup?: RecipeLookup,
+  _visitedRecipeIds: string[] = []
+): RecipeComposition {
+  let flour = 0;
+  let liquids = 0;
+
+  for (const ingredient of recipe.ingredients) {
+    if (flourRoles.includes(ingredient.role)) {
+      flour += ingredient.quantity;
+      continue;
+    }
+
+    if (liquidRoles.includes(ingredient.role)) {
+      liquids += ingredient.quantity;
+    }
+  }
+
+  return {
+    flour: round(flour),
+    liquids: round(liquids),
+    doughWeight: getDoughWeight(recipe.ingredients, recipeLookup, recipe.id),
     hydration: flour > 0 ? round((liquids / flour) * 100) : 0
   };
 }
@@ -487,7 +593,7 @@ export function getPrefermentBreakdown(
     };
   }
 
-  const composition = getRecipeComposition(
+  const composition = getExpandedRecipeComposition(
     linkedRecipe,
     recipeLookup,
     parentRecipeId ? [parentRecipeId] : []
@@ -541,16 +647,58 @@ export function getPrefermentContributionTotals(
   );
 }
 
+function getBreakdownTargetKind(role: IngredientRole): BreakdownTargetKind | null {
+  if (flourRoles.includes(role)) {
+    return "flour";
+  }
+
+  if (liquidRoles.includes(role)) {
+    return "liquids";
+  }
+
+  return null;
+}
+
+function getBreakdownTargetIngredient(
+  ingredients: RecipeIngredient[],
+  kind: BreakdownTargetKind
+) {
+  return (
+    ingredients.find((item) => {
+      const itemKind = getBreakdownTargetKind(item.role);
+      return itemKind === kind && item.quantity > 0;
+    }) ?? null
+  );
+}
+
+function adjustIngredientQuantity(
+  ingredients: RecipeIngredient[],
+  ingredientId: string,
+  delta: number
+) {
+  return ingredients.map((ingredient) =>
+    ingredient.id === ingredientId
+      ? {
+          ...ingredient,
+          quantity: round(ingredient.quantity + delta)
+        }
+      : ingredient
+  );
+}
+
+function getPreferredAdjustmentIngredientId(ingredients: RecipeIngredient[]) {
+  return getPrimaryFlourIngredient(ingredients)?.id ?? ingredients[0]?.id ?? null;
+}
+
 export function getIngredientDisplayBreakdown(
   ingredient: RecipeIngredient,
   ingredients: RecipeIngredient[],
   recipeLookup: RecipeLookup,
   parentRecipeId?: string
 ): IngredientDisplayBreakdown {
-  const prefersFlour = ingredient.role === "flour";
-  const prefersLiquid = liquidRoles.includes(ingredient.role);
+  const targetKind = getBreakdownTargetKind(ingredient.role);
 
-  if (!prefersFlour && !prefersLiquid) {
+  if (!targetKind) {
     return {
       totalRequired: ingredient.quantity,
       contributed: 0,
@@ -561,13 +709,9 @@ export function getIngredientDisplayBreakdown(
   }
 
   const contributions = getPrefermentContributionTotals(ingredients, recipeLookup, parentRecipeId);
-  const roleIngredients = ingredients.filter((item) => item.role === ingredient.role);
-  const totalRequiredForRole = round(
-    roleIngredients.reduce((total, item) => total + item.quantity, 0)
-  );
-  const totalContribution = prefersFlour ? contributions.flour : contributions.liquids;
+  const totalContribution = targetKind === "flour" ? contributions.flour : contributions.liquids;
 
-  if (totalRequiredForRole <= 0 || totalContribution <= 0) {
+  if (totalContribution <= 0) {
     return {
       totalRequired: ingredient.quantity,
       contributed: 0,
@@ -577,61 +721,109 @@ export function getIngredientDisplayBreakdown(
     };
   }
 
-  const contributionShare = round((totalContribution * ingredient.quantity) / totalRequiredForRole);
-  const actualContribution = round(Math.min(contributionShare, ingredient.quantity));
+  const targetIngredient = getBreakdownTargetIngredient(ingredients, targetKind);
+
+  if (!targetIngredient || targetIngredient.id !== ingredient.id) {
+    return {
+      totalRequired: ingredient.quantity,
+      contributed: 0,
+      visibleQuantity: ingredient.quantity,
+      detail: null,
+      warning: null
+    };
+  }
+
+  const actualContribution = round(Math.min(totalContribution, ingredient.quantity));
   const visibleQuantity = round(Math.max(0, ingredient.quantity - actualContribution));
-  const exceeded = contributionShare > ingredient.quantity;
+  const exceeded = totalContribution > ingredient.quantity;
 
   return {
     totalRequired: ingredient.quantity,
     contributed: actualContribution,
     visibleQuantity,
     detail: `[${round(ingredient.quantity)} - ${actualContribution}]`,
-    warning: exceeded ? "El prefermento excede el total calculado" : null
+    warning: exceeded
+      ? `El aporte del prefermento excede el ingrediente principal por ${round(totalContribution - ingredient.quantity)} g`
+      : null
   };
 }
 
 export function getScaledDoughWeight(
   ingredients: RecipeIngredient[],
-  flourTarget: number
+  flourTarget: number,
+  recipeLookup?: RecipeLookup,
+  parentRecipeId?: string
 ) {
-  return round(
-    scaleIngredients(ingredients, flourTarget).reduce(
-      (total, ingredient) => total + ingredient.scaledQuantity,
-      0
-    )
-  );
+  const scaledIngredients = scaleIngredients(ingredients, flourTarget).map((ingredient) => ({
+    ...ingredient,
+    quantity: ingredient.scaledQuantity
+  }));
+
+  return getDoughWeight(scaledIngredients, recipeLookup, parentRecipeId);
 }
 
 export function applyScaleByTotalFlour(
   ingredients: RecipeIngredient[],
   flourTarget: number
 ) {
-  return scaleByTotalFlour(ingredients, flourTarget).map((ingredient) => ({
+  const scaledIngredients = scaleByTotalFlour(ingredients, flourTarget).map((ingredient) => ({
     ...ingredient,
     quantity: ingredient.scaledQuantity
   }));
+  const flourDelta = round(flourTarget - getTotalFlour(scaledIngredients));
+  const adjustmentId = getPreferredAdjustmentIngredientId(scaledIngredients);
+  const reconciledIngredients =
+    adjustmentId && flourDelta !== 0
+      ? adjustIngredientQuantity(scaledIngredients, adjustmentId, flourDelta)
+      : scaledIngredients;
+
+  return recalculateBakerPercentagesFromQuantities(reconciledIngredients);
 }
 
 export function applyScaleByDoughWeight(
   ingredients: RecipeIngredient[],
-  doughWeightTarget: number
+  doughWeightTarget: number,
+  recipeLookup?: RecipeLookup,
+  parentRecipeId?: string
 ) {
-  return scaleByDoughWeight(ingredients, doughWeightTarget).map((ingredient) => ({
+  const scaledIngredients = scaleByDoughWeight(
+    ingredients,
+    doughWeightTarget,
+    recipeLookup,
+    parentRecipeId
+  ).map((ingredient) => ({
     ...ingredient,
     quantity: ingredient.scaledQuantity
   }));
+  const doughDelta = round(
+    doughWeightTarget - getDoughWeight(scaledIngredients, recipeLookup, parentRecipeId)
+  );
+  const adjustmentId = getPreferredAdjustmentIngredientId(scaledIngredients);
+  const reconciledIngredients =
+    adjustmentId && doughDelta !== 0
+      ? adjustIngredientQuantity(scaledIngredients, adjustmentId, doughDelta)
+      : scaledIngredients;
+
+  return recalculateBakerPercentagesFromQuantities(reconciledIngredients);
 }
 
 export function applyScaleByYield(
   ingredients: RecipeIngredient[],
   pieceCount: number,
-  pieceWeight: number
+  pieceWeight: number,
+  recipeLookup?: RecipeLookup,
+  parentRecipeId?: string
 ) {
-  return scaleByYield(ingredients, pieceCount, pieceWeight).map((ingredient) => ({
+  return recalculateBakerPercentagesFromQuantities(scaleByYield(
+    ingredients,
+    pieceCount,
+    pieceWeight,
+    recipeLookup,
+    parentRecipeId
+  ).map((ingredient) => ({
     ...ingredient,
     quantity: ingredient.scaledQuantity
-  }));
+  })));
 }
 
 export function buildScalingTargetLabel(scalingTarget?: RecipeScalingTarget) {

@@ -28,12 +28,15 @@ import {
   getBakerPercentageFromQuantity,
   getDoughWeight,
   getHydrationPercentage,
+  getIngredientBakerPercentageFromQuantity,
   getIngredientDisplayBreakdown,
+  getIngredientQuantityFromBakerPercentage,
   getMoistureIndex,
+  getPrimaryFlourQuantity,
   getPrefermentBreakdown,
   getQuantityFromBakerPercentage,
-  rebalanceFlourBlendPercentages,
   recalculateBakerPercentagesFromQuantities,
+  isPrimaryFlourIngredient,
   getTotalFlour,
   getTotalLiquids,
   parseDecimalInput
@@ -198,6 +201,8 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   );
   const recipeLookup = useMemo(() => new Map(recipes.map((item) => [item.id, item])), [recipes]);
   const flourTotal = getTotalFlour(recipe.ingredients);
+  const primaryFlourQuantity = getPrimaryFlourQuantity(recipe.ingredients);
+  const lookupRecipe = (linkedRecipeId: string) => recipeLookup.get(linkedRecipeId);
   const summary = useMemo(() => {
     const prefermentPercentage = recipe.ingredients
       .filter((ingredient) => ingredient.role === "preferment")
@@ -206,12 +211,12 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     return {
       flour: getTotalFlour(recipe.ingredients),
       liquids: getTotalLiquids(recipe.ingredients),
-      doughWeight: getDoughWeight(recipe.ingredients),
+      doughWeight: getDoughWeight(recipe.ingredients, lookupRecipe, recipe.id),
       hydration: getHydrationPercentage(recipe.ingredients),
       moisture: getMoistureIndex(recipe.ingredients),
       preferment: prefermentPercentage > 0 ? `${prefermentPercentage}%` : "No"
     };
-  }, [recipe.ingredients]);
+  }, [lookupRecipe, recipe.id, recipe.ingredients]);
   const activeScalingLabel = buildScalingTargetLabel(recipe.scalingTarget);
   const prefermentCount = useMemo(
     () => recipe.ingredients.filter((ingredient) => ingredient.role === "preferment").length,
@@ -234,7 +239,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         const breakdown = getIngredientDisplayBreakdown(
           ingredient,
           recipe.ingredients,
-          (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
+          lookupRecipe,
           recipe.id
         );
 
@@ -270,18 +275,15 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         ...item,
         detail: `[${item.total} - ${item.contributed}]`
       }));
-  }, [recipe.id, recipe.ingredients, recipeLookup]);
+  }, [lookupRecipe, recipe.id, recipe.ingredients]);
 
   function syncScaleInputs(nextIngredients: RecipeIngredient[]) {
     setFlourTargetInput(formatDecimalInput(getTotalFlour(nextIngredients)));
-    setDoughTargetInput(formatDecimalInput(getDoughWeight(nextIngredients)));
+    setDoughTargetInput(formatDecimalInput(getDoughWeight(nextIngredients, lookupRecipe, recipe.id)));
   }
 
   function syncPercentagesForMultiFlour(nextIngredients: RecipeIngredient[]) {
-    const flourCount = nextIngredients.filter((ingredient) => ingredient.role === "flour").length;
-    return flourCount > 1
-      ? recalculateBakerPercentagesFromQuantities(nextIngredients)
-      : nextIngredients;
+    return recalculateBakerPercentagesFromQuantities(nextIngredients);
   }
 
   function updateRecipeIngredients(
@@ -321,8 +323,26 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   function handleIngredientQuantityChange(value: string) {
     setLastEditedField("quantity");
     setIngredientDraft((current) => {
+      const quantity = parseDecimalInput(value);
       const percentage =
-        flourTotal > 0 ? getBakerPercentageFromQuantity(parseDecimalInput(value), flourTotal) : 0;
+        current.role === "flour"
+          ? editingIngredientId && isPrimaryFlourIngredient(recipe.ingredients, editingIngredientId)
+            ? quantity > 0
+              ? 100
+              : 0
+            : primaryFlourQuantity > 0
+              ? getIngredientBakerPercentageFromQuantity(
+                  recipe.ingredients,
+                  {
+                    id: editingIngredientId ?? current.id,
+                    role: current.role
+                  },
+                  quantity
+                )
+              : 0
+          : flourTotal > 0
+            ? getBakerPercentageFromQuantity(quantity, flourTotal)
+            : 0;
 
       return {
         ...current,
@@ -336,8 +356,17 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   function handleIngredientPercentageChange(value: string) {
     setLastEditedField("percentage");
     setIngredientDraft((current) => {
+      const percentage = parseDecimalInput(value);
       const quantity =
-        flourTotal > 0 ? getQuantityFromBakerPercentage(flourTotal, parseDecimalInput(value)) : 0;
+        current.role === "flour"
+          ? editingIngredientId && isPrimaryFlourIngredient(recipe.ingredients, editingIngredientId)
+            ? parseDecimalInput(current.quantityInput)
+            : primaryFlourQuantity > 0
+              ? getQuantityFromBakerPercentage(primaryFlourQuantity, percentage)
+              : 0
+          : flourTotal > 0
+            ? getQuantityFromBakerPercentage(flourTotal, percentage)
+            : 0;
 
       return {
         ...current,
@@ -367,53 +396,59 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       linkedRecipeName: ingredientDraft.linkedRecipeName
     };
 
-    if (flourTotal > 0) {
-      if (lastEditedField === "percentage") {
-        nextIngredient.quantity = getQuantityFromBakerPercentage(flourTotal, bakerPercentage);
-      }
+    const currentPrimaryFlourQuantity = getPrimaryFlourQuantity(recipe.ingredients);
+    const editingPrimaryFlour =
+      Boolean(editingIngredientId) &&
+      nextIngredient.role === "flour" &&
+      isPrimaryFlourIngredient(recipe.ingredients, editingIngredientId ?? "");
 
-      if (lastEditedField === "quantity") {
-        nextIngredient.bakerPercentage = getBakerPercentageFromQuantity(quantity, flourTotal);
+    if (lastEditedField === "percentage") {
+      if (!(editingPrimaryFlour && nextIngredient.role === "flour")) {
+        nextIngredient.quantity = getIngredientQuantityFromBakerPercentage(
+          recipe.ingredients,
+          nextIngredient,
+          bakerPercentage
+        );
       }
     }
 
-    let nextIngredients = editingIngredientId
-      ? recipe.ingredients.map((ingredient) =>
-          ingredient.id === editingIngredientId ? nextIngredient : ingredient
-        )
-      : [...recipe.ingredients, nextIngredient];
+    let nextIngredients: RecipeIngredient[];
 
     if (
       editingIngredientId &&
-      nextIngredient.role === "flour" &&
+      editingPrimaryFlour &&
       lastEditedField === "quantity" &&
-      recipe.ingredients.filter((ingredient) => ingredient.role === "flour").length === 1
+      currentPrimaryFlourQuantity > 0
     ) {
-      nextIngredients = applyScaleByTotalFlour(recipe.ingredients, nextIngredient.quantity).map(
-        (ingredient) =>
-          ingredient.id === nextIngredient.id
-            ? { ...ingredient, name: nextIngredient.name, unit: nextIngredient.unit }
-            : ingredient
+      const factor = quantity / currentPrimaryFlourQuantity;
+      nextIngredients = recipe.ingredients.map((ingredient) =>
+        ingredient.id === editingIngredientId
+          ? {
+              ...ingredient,
+              name: nextIngredient.name,
+              unit: nextIngredient.unit,
+              linkedRecipeId: nextIngredient.linkedRecipeId,
+              linkedRecipeName: nextIngredient.linkedRecipeName,
+              quantity: Math.round(ingredient.quantity * factor * 10) / 10
+            }
+          : {
+              ...ingredient,
+              quantity: Math.round(ingredient.quantity * factor * 10) / 10
+            }
       );
+    } else {
+      nextIngredients = editingIngredientId
+        ? recipe.ingredients.map((ingredient) =>
+            ingredient.id === editingIngredientId ? nextIngredient : ingredient
+          )
+        : [...recipe.ingredients, nextIngredient];
     }
 
-    if (nextIngredient.role === "flour") {
-      const flourCount = nextIngredients.filter((ingredient) => ingredient.role === "flour").length;
-
-      if (lastEditedField === "percentage" && flourCount > 1) {
-        nextIngredients = rebalanceFlourBlendPercentages(
-          nextIngredients,
-          nextIngredient.id,
-          nextIngredient.bakerPercentage
-        );
-      } else {
-        nextIngredients = syncPercentagesForMultiFlour(nextIngredients);
-      }
-    }
+    nextIngredients = syncPercentagesForMultiFlour(nextIngredients);
 
     const adjustedIngredients =
       recipe.scalingTarget && lastEditedField
-        ? applyScalingTarget(nextIngredients, recipe.scalingTarget)
+        ? applyScalingTarget(nextIngredients, recipe.scalingTarget, lookupRecipe, recipe.id)
         : nextIngredients;
 
     updateRecipeIngredients(adjustedIngredients);
@@ -431,7 +466,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     );
 
     updateRecipeIngredients(
-      recipe.scalingTarget ? applyScalingTarget(nextIngredients, recipe.scalingTarget) : nextIngredients
+      recipe.scalingTarget
+        ? applyScalingTarget(nextIngredients, recipe.scalingTarget, lookupRecipe, recipe.id)
+        : syncPercentagesForMultiFlour(nextIngredients)
     );
     Keyboard.dismiss();
     setIngredientVisible(false);
@@ -535,14 +572,21 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     }
 
     if (mode === "dough") {
-      nextIngredients = applyScaleByDoughWeight(recipe.ingredients, parseDecimalInput(doughTargetInput));
+      nextIngredients = applyScaleByDoughWeight(
+        recipe.ingredients,
+        parseDecimalInput(doughTargetInput),
+        lookupRecipe,
+        recipe.id
+      );
     }
 
     if (mode === "yield") {
       nextIngredients = applyScaleByYield(
         recipe.ingredients,
         Math.max(0, Math.round(parseDecimalInput(pieceCountInput))),
-        parseDecimalInput(pieceWeightInput)
+        parseDecimalInput(pieceWeightInput),
+        lookupRecipe,
+        recipe.id
       );
     }
 
@@ -617,7 +661,14 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     ];
 
     updateRecipeIngredients(
-      recipe.scalingTarget ? applyScalingTarget(nextIngredients, recipe.scalingTarget) : nextIngredients
+      recipe.scalingTarget
+        ? applyScalingTarget(
+            syncPercentagesForMultiFlour(nextIngredients),
+            recipe.scalingTarget,
+            lookupRecipe,
+            recipe.id
+          )
+        : syncPercentagesForMultiFlour(nextIngredients)
     );
 
     Keyboard.dismiss();

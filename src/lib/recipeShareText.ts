@@ -23,7 +23,11 @@ export function formatRecipeAsShareText(
   const lines: string[] = [];
   const hydration = getHydrationPercentage(recipe.ingredients);
   const flourTotal = getTotalFlour(recipe.ingredients);
-  const doughWeight = getDoughWeight(recipe.ingredients);
+  const doughWeight = getDoughWeight(
+    recipe.ingredients,
+    (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
+    recipe.id
+  );
 
   lines.push("CENTENO · Receta");
   lines.push("");
