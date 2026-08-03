@@ -44,7 +44,7 @@ import {
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { shareCentenoRecipeFile } from "@/lib/recipeFileShare";
 import { exportRecipeToJson } from "@/lib/recipeImportExport";
-import { moveIngredientInList } from "@/lib/recipeOrder";
+import { canMoveIngredient, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
@@ -203,6 +203,15 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const flourTotal = getTotalFlour(recipe.ingredients);
   const primaryFlourQuantity = getPrimaryFlourQuantity(recipe.ingredients);
   const lookupRecipe = (linkedRecipeId: string) => recipeLookup.get(linkedRecipeId);
+  const editingIngredient = editingIngredientId
+    ? recipe.ingredients.find((ingredient) => ingredient.id === editingIngredientId) ?? null
+    : null;
+  const canMoveUp = editingIngredientId
+    ? canMoveIngredient(recipe.ingredients, editingIngredientId, "up")
+    : false;
+  const canMoveDown = editingIngredientId
+    ? canMoveIngredient(recipe.ingredients, editingIngredientId, "down")
+    : false;
   const summary = useMemo(() => {
     const prefermentPercentage = recipe.ingredients
       .filter((ingredient) => ingredient.role === "preferment")
@@ -819,43 +828,44 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               />
             ))}
           </View>
+          {editingIngredient?.role === "flour" &&
+          editingIngredientId &&
+          isPrimaryFlourIngredient(recipe.ingredients, editingIngredientId) ? (
+            <Text style={styles.baseFlourNote}>Esta es la harina base de la formula.</Text>
+          ) : null}
           {editingIngredientId ? (
             <View style={styles.reorderActions}>
               <Pressable
-                disabled={recipe.ingredients[0]?.id === editingIngredientId}
+                disabled={!canMoveUp}
                 onPress={() => moveIngredient("up")}
                 style={({ pressed }) => [
                   styles.secondaryAction,
-                  recipe.ingredients[0]?.id === editingIngredientId && styles.secondaryActionDisabled,
-                  pressed && recipe.ingredients[0]?.id !== editingIngredientId && styles.secondaryActionPressed
+                  !canMoveUp && styles.secondaryActionDisabled,
+                  pressed && canMoveUp && styles.secondaryActionPressed
                 ]}
               >
                 <Text
                   style={[
                     styles.secondaryActionLabel,
-                    recipe.ingredients[0]?.id === editingIngredientId && styles.secondaryActionLabelDisabled
+                    !canMoveUp && styles.secondaryActionLabelDisabled
                   ]}
                 >
                   ↑ Subir
                 </Text>
               </Pressable>
               <Pressable
-                disabled={recipe.ingredients[recipe.ingredients.length - 1]?.id === editingIngredientId}
+                disabled={!canMoveDown}
                 onPress={() => moveIngredient("down")}
                 style={({ pressed }) => [
                   styles.secondaryAction,
-                  recipe.ingredients[recipe.ingredients.length - 1]?.id === editingIngredientId &&
-                    styles.secondaryActionDisabled,
-                  pressed &&
-                    recipe.ingredients[recipe.ingredients.length - 1]?.id !== editingIngredientId &&
-                    styles.secondaryActionPressed
+                  !canMoveDown && styles.secondaryActionDisabled,
+                  pressed && canMoveDown && styles.secondaryActionPressed
                 ]}
               >
                 <Text
                   style={[
                     styles.secondaryActionLabel,
-                    recipe.ingredients[recipe.ingredients.length - 1]?.id === editingIngredientId &&
-                      styles.secondaryActionLabelDisabled
+                    !canMoveDown && styles.secondaryActionLabelDisabled
                   ]}
                 >
                   ↓ Bajar
@@ -1991,6 +2001,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: theme.spacing.sm,
     justifyContent: "flex-start"
+  },
+  baseFlourNote: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    marginTop: theme.spacing.sm
   },
   sheetActions: {
     alignItems: "center",

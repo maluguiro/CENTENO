@@ -23,6 +23,7 @@ import {
   scaleByYield,
   scaleIngredients
 } from "./baker";
+import { moveIngredientInList } from "./recipeOrder";
 import type { Recipe, RecipeIngredient } from "../types/recipe";
 
 function assertEqual(actual: unknown, expected: unknown) {
@@ -636,6 +637,53 @@ function runIngredientOrderStabilityCase() {
   assertEqual(getRecipeComposition(reorderedRecipe, lookup).doughWeight, 1336);
 }
 
+function runPrimaryFlourReorderStabilityCase() {
+  const ingredients: RecipeIngredient[] = [
+    ingredient("flour-base", "Harina base", 1000, "flour", 100),
+    ingredient("flour-secondary", "Harina secundaria", 150, "flour", 15),
+    ingredient("water", "Agua", 805, "water", 70),
+    ingredient("salt", "Sal", 23, "salt", 2)
+  ];
+
+  const movedFlourDown = moveIngredientInList(ingredients, "flour-base", "down");
+  assertDeepEqual(movedFlourDown, ingredients);
+
+  const movedSecondaryUp = moveIngredientInList(ingredients, "flour-secondary", "up");
+  assertDeepEqual(movedSecondaryUp, ingredients);
+
+  const movedWaterUp = moveIngredientInList(ingredients, "water", "up");
+  assertDeepEqual(
+    movedWaterUp.map((ingredient) => ingredient.id),
+    ["flour-base", "water", "flour-secondary", "salt"]
+  );
+
+  const movedSaltUp = moveIngredientInList(ingredients, "salt", "up");
+  assertDeepEqual(
+    movedSaltUp.map((ingredient) => ingredient.id),
+    ["flour-base", "flour-secondary", "salt", "water"]
+  );
+
+  assertEqual(getTotalFlour(movedSaltUp), 1150);
+  assertEqual(getTotalLiquids(movedSaltUp), 805);
+  assertEqual(getDoughWeight(movedSaltUp), 1978);
+  assertEqual(getHydrationPercentage(movedSaltUp), 70);
+
+  const renamedBase = [
+    {
+      ...ingredients[0],
+      name: "Harina integral"
+    },
+    ...ingredients.slice(1)
+  ];
+
+  assertEqual(getPrimaryFlourQuantity(renamedBase), 1000);
+  assertEqual(
+    recalculateBakerPercentagesFromQuantities(renamedBase).find((ingredient) => ingredient.id === "flour-base")
+      ?.bakerPercentage,
+    100
+  );
+}
+
 function runBaseRecipeCase() {
   const ingredients: RecipeIngredient[] = [
     ingredient("flour", "Harina", 500, "flour", 100),
@@ -866,6 +914,7 @@ export function runBakerValidation() {
   runPrefermentHydrationVariantsCase();
   runPrefermentOverflowCase();
   runIngredientOrderStabilityCase();
+  runPrimaryFlourReorderStabilityCase();
   runBaseRecipeCase();
   runAdjustPercentageCase();
   runDecimalParsingCase();

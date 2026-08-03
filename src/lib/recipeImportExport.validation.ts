@@ -4,7 +4,7 @@ import {
   prepareImportedRecipe
 } from "@/lib/recipeImportExport";
 import { buildCentenoFileName } from "@/lib/recipeFileShare";
-import { moveIngredientInList } from "@/lib/recipeOrder";
+import { canMoveIngredient, getPrimaryFlourIndex, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { sampleRecipes } from "@/data/sampleRecipes";
 import { mergeMissingSampleRecipes } from "@/store/RecipesProvider";
@@ -188,11 +188,15 @@ function runRecipeValidation() {
   const movedUp = moveIngredientInList(orderedRecipe.ingredients, "flour-1", "up");
   assert(
     movedUp.map((ingredient) => ingredient.id).join(",") === "flour-1,water-1,salt-1",
-    "Mover hacia arriba debe intercambiar posiciones."
+    "La harina principal debe poder subir hasta quedar como primera."
   );
   assert(
     movedUp[0].quantity === 500 && movedUp[0].bakerPercentage === 100,
     "Mover no debe cambiar cantidades ni porcentajes."
+  );
+  assert(
+    getPrimaryFlourIndex(movedUp) === 0,
+    "La harina principal debe detectarse correctamente tras subir."
   );
 
   const firstUp = moveIngredientInList(orderedRecipe.ingredients, "water-1", "up");
@@ -200,17 +204,112 @@ function runRecipeValidation() {
     firstUp.map((ingredient) => ingredient.id).join(",") === "water-1,flour-1,salt-1",
     "Mover el primero hacia arriba no debe cambiar nada."
   );
+  assert(
+    canMoveIngredient(movedUp, "water-1", "up") === false,
+    "Ningun ingrediente debe poder subir por encima de la harina principal."
+  );
 
   const movedDown = moveIngredientInList(orderedRecipe.ingredients, "flour-1", "down");
   assert(
-    movedDown.map((ingredient) => ingredient.id).join(",") === "water-1,salt-1,flour-1",
-    "Mover hacia abajo debe intercambiar posiciones."
+    movedDown.map((ingredient) => ingredient.id).join(",") === "water-1,flour-1,salt-1",
+    "La harina principal no debe poder bajar."
   );
 
   const lastDown = moveIngredientInList(orderedRecipe.ingredients, "salt-1", "down");
   assert(
     lastDown.map((ingredient) => ingredient.id).join(",") === "water-1,flour-1,salt-1",
     "Mover el ultimo hacia abajo no debe cambiar nada."
+  );
+
+  const multiFlourRecipe: Recipe = {
+    ...baseRecipe,
+    ingredients: [
+      {
+        id: "flour-base",
+        name: "Base",
+        quantity: 1000,
+        unit: "g",
+        role: "flour",
+        bakerPercentage: 100
+      },
+      {
+        id: "flour-secondary",
+        name: "Secundaria",
+        quantity: 150,
+        unit: "g",
+        role: "flour",
+        bakerPercentage: 15
+      },
+      {
+        id: "water-main",
+        name: "Agua",
+        quantity: 805,
+        unit: "g",
+        role: "water",
+        bakerPercentage: 70
+      },
+      {
+        id: "salt-main",
+        name: "Sal",
+        quantity: 23,
+        unit: "g",
+        role: "salt",
+        bakerPercentage: 2
+      }
+    ]
+  };
+
+  assert(
+    canMoveIngredient(multiFlourRecipe.ingredients, "flour-base", "down") === false,
+    "La harina principal no puede bajar."
+  );
+  assert(
+    canMoveIngredient(multiFlourRecipe.ingredients, "flour-secondary", "up") === false,
+    "Una harina secundaria no puede subir por encima de la harina principal."
+  );
+  assert(
+    canMoveIngredient(multiFlourRecipe.ingredients, "water-main", "up") === true,
+    "Un ingrediente no-harina debe poder subir mientras quede debajo de la harina principal."
+  );
+
+  const reorderedBelowBase = moveIngredientInList(multiFlourRecipe.ingredients, "salt-main", "up");
+  assert(
+    reorderedBelowBase.map((ingredient) => ingredient.id).join(",") ===
+      "flour-base,flour-secondary,salt-main,water-main",
+    "Los ingredientes debajo de la harina principal deben poder reordenarse."
+  );
+
+  const noFlourRecipe: Recipe = {
+    ...baseRecipe,
+    ingredients: [
+      {
+        id: "water-a",
+        name: "Agua",
+        quantity: 400,
+        unit: "g",
+        role: "water",
+        bakerPercentage: 100
+      },
+      {
+        id: "salt-a",
+        name: "Sal",
+        quantity: 8,
+        unit: "g",
+        role: "salt",
+        bakerPercentage: 2
+      }
+    ]
+  };
+
+  assert(
+    getPrimaryFlourIndex(noFlourRecipe.ingredients) === -1,
+    "Una receta sin harina debe devolver indice seguro."
+  );
+  assert(
+    moveIngredientInList(noFlourRecipe.ingredients, "salt-a", "up")
+      .map((ingredient) => ingredient.id)
+      .join(",") === "salt-a,water-a",
+    "Sin harina debe mantenerse el comportamiento seguro de reordenamiento."
   );
 
   const exportedOrdered = exportRecipeToJson(orderedRecipe);
