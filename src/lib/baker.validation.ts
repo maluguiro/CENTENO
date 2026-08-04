@@ -1002,9 +1002,12 @@ function runRecipeSummaryCase() {
 
   assertEqual(getRecipeSummary(lactal, lookup).doughWeight, 3085.5);
   assertEqual(getRecipeSummary(lactal).doughWeight, 3580.5);
+  assertEqual(getScaledDoughWeight(lactal.ingredients, 1650, lookup, lactal.id), 3085.5);
   assertEqual(getRecipeSummary(simple).doughWeight, 1680);
+  assertEqual(getScaledDoughWeight(simple.ingredients, 1000), 1680);
   assertEqual(getRecipeSummary(focaccia, lookup).doughWeight, 1032);
   assertEqual(getRecipeSummary(focaccia).doughWeight, 1632);
+  assertEqual(getScaledDoughWeight(focaccia.ingredients, 600, lookup, focaccia.id), 1032);
 
   const missingPrefermentRecipe: Recipe = {
     ...focaccia,
@@ -1021,6 +1024,7 @@ function runRecipeSummaryCase() {
   };
 
   assertEqual(getRecipeSummary(missingPrefermentRecipe, lookup).doughWeight, 1632);
+  assertEqual(getScaledDoughWeight(missingPrefermentRecipe.ingredients, 600, lookup, missingPrefermentRecipe.id), 1632);
 }
 
 export function runBakerValidation() {

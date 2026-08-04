@@ -23,8 +23,9 @@ function emptyIngredient(): RecipeIngredient {
 
 export default function RecipeFormScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
-  const { createRecipe, getRecipeById, updateRecipe } = useRecipes();
+  const { createRecipe, getRecipeById, recipes, updateRecipe } = useRecipes();
   const existingRecipe = params.id ? getRecipeById(params.id) : undefined;
+  const recipeLookup = (recipeId: string) => recipes.find((recipe) => recipe.id === recipeId);
 
   const [name, setName] = useState(existingRecipe?.name ?? "");
   const [description, setDescription] = useState(existingRecipe?.description ?? "");
@@ -41,9 +42,12 @@ export default function RecipeFormScreen() {
     return {
       basePercent: getBasePercent(ingredients),
       hydration: getHydrationPercent(ingredients),
-      doughWeight: getDoughWeight(ingredients)
+      doughWeight:
+        existingRecipe
+          ? getDoughWeight(ingredients, recipeLookup, existingRecipe.id)
+          : getDoughWeight(ingredients)
     };
-  }, [ingredients]);
+  }, [existingRecipe, ingredients, recipes]);
 
   const isEditing = Boolean(existingRecipe);
 

@@ -8,10 +8,11 @@ import { theme } from "@/theme";
 
 export default function CalculatorScreen() {
   const { recipes } = useRecipes();
+  const recipeLookup = (recipeId: string) => recipes.find((recipe) => recipe.id === recipeId);
   const [selectedId, setSelectedId] = useState(recipes[0]?.id ?? "");
   const selectedRecipe = recipes.find((recipe) => recipe.id === selectedId) ?? recipes[0];
   const [flourTarget, setFlourTarget] = useState(
-    selectedRecipe ? String(getRecipeSummary(selectedRecipe).baseQuantity) : "1000"
+    selectedRecipe ? String(getRecipeSummary(selectedRecipe, recipeLookup).baseQuantity) : "1000"
   );
 
   const scaled = selectedRecipe
@@ -36,7 +37,7 @@ export default function CalculatorScreen() {
             key={recipe.id}
             onPress={() => {
               setSelectedId(recipe.id);
-              setFlourTarget(String(getRecipeSummary(recipe).baseQuantity));
+              setFlourTarget(String(getRecipeSummary(recipe, recipeLookup).baseQuantity));
             }}
             style={[
               styles.recipeChip,
@@ -71,8 +72,13 @@ export default function CalculatorScreen() {
         <Text style={styles.sectionTitle}>Resultado</Text>
         {selectedRecipe ? (
           <Text style={styles.helperText}>
-            Hidratacion {getRecipeSummary(selectedRecipe).hydration}% - Masa{" "}
-            {getScaledDoughWeight(selectedRecipe.ingredients, Number(flourTarget) || 0)} g
+            Hidratacion {getRecipeSummary(selectedRecipe, recipeLookup).hydration}% - Masa{" "}
+            {getScaledDoughWeight(
+              selectedRecipe.ingredients,
+              Number(flourTarget) || 0,
+              recipeLookup,
+              selectedRecipe.id
+            )} g
           </Text>
         ) : null}
         {selectedRecipe ? (
