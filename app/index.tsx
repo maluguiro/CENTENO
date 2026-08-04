@@ -218,6 +218,7 @@ export default function HomeScreen() {
       })
       .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
   }, [categoryFilter, query, recipes]);
+  const recipeLookup = useMemo(() => new Map(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
 
   const quickRecipe = useMemo(
     () => recipes.find((recipe) => recipe.id === quickRecipeId),
@@ -621,6 +622,7 @@ export default function HomeScreen() {
         {filteredRecipes.map((recipe) => (
           <FormulaListItem
             key={recipe.id}
+            recipeLookup={(recipeId) => recipeLookup.get(recipeId)}
             onLongPress={() => openQuickActions(recipe)}
             onPress={() => router.push(`/recipes/${recipe.id}`)}
             recipe={recipe}
@@ -1666,4 +1668,3 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   }
 });
-

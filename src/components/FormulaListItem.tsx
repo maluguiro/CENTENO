@@ -6,12 +6,18 @@ import type { Recipe } from "@/types/recipe";
 
 type FormulaListItemProps = {
   recipe: Recipe;
+  recipeLookup?: (recipeId: string) => Recipe | undefined;
   onPress: () => void;
   onLongPress?: () => void;
 };
 
-export function FormulaListItem({ recipe, onLongPress, onPress }: FormulaListItemProps) {
-  const summary = getRecipeSummary(recipe);
+export function FormulaListItem({
+  recipe,
+  recipeLookup,
+  onLongPress,
+  onPress
+}: FormulaListItemProps) {
+  const summary = getRecipeSummary(recipe, recipeLookup);
 
   return (
     <Pressable

@@ -858,14 +858,17 @@ export function buildScalingTargetLabel(scalingTarget?: RecipeScalingTarget) {
   return null;
 }
 
-export function getRecipeSummary(recipe: Recipe) {
+export function getRecipeSummary(
+  recipe: Recipe,
+  recipeLookup?: RecipeLookup
+) {
   const basePercent = getBasePercent(recipe.ingredients);
   const baseQuantity = getTotalFlour(recipe.ingredients);
   const hydration = getHydrationPercentage(recipe.ingredients);
   const moistureIndex = getMoistureIndex(recipe.ingredients);
   const fats = getTotalFats(recipe.ingredients);
   const liquids = getTotalLiquids(recipe.ingredients);
-  const doughWeight = getDoughWeight(recipe.ingredients);
+  const doughWeight = getDoughWeight(recipe.ingredients, recipeLookup, recipe.id);
 
   return {
     basePercent,

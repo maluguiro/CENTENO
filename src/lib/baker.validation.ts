@@ -11,6 +11,7 @@ import {
   getPrimaryFlourQuantity,
   getPrefermentBreakdown,
   getQuantityFromBakerPercentage,
+  getRecipeSummary,
   rebalanceFlourBlendPercentages,
   recalculateBakerPercentagesFromQuantities,
   getScaledDoughWeight,
@@ -898,6 +899,130 @@ function runScalingMultiFlourCase() {
   assertEqual(byTarget.find((item) => item.id === "water")?.bakerPercentage, 70);
 }
 
+function runRecipeSummaryCase() {
+  const starter60: Recipe = {
+    id: "summary-starter-60",
+    name: "Masa madre 60",
+    description: "",
+    notes: "",
+    useAsPreferment: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ingredients: [
+      ingredient("starter-flour", "Harina", 309.4, "flour", 100),
+      ingredient("starter-water", "Agua", 185.6, "water", 60)
+    ]
+  };
+
+  const lactal: Recipe = {
+    id: "summary-lactal",
+    name: "Lactal centeno y nueces",
+    description: "",
+    notes: "",
+    useAsPreferment: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ingredients: [
+      ingredient("main-flour", "Harina", 1500, "flour", 100),
+      ingredient("rye-flour", "Harina de centeno", 150, "flour", 10),
+      ingredient("water", "Agua", 1155, "water", 70),
+      {
+        ...ingredient("starter", "Pasta madre", 495, "preferment", 30),
+        linkedRecipeId: starter60.id,
+        linkedRecipeName: starter60.name
+      },
+      ingredient("walnuts", "Nueces", 165, "other", 10),
+      ingredient("honey", "Miel", 82.5, "sugar", 5),
+      ingredient("salt", "Sal", 33, "salt", 2)
+    ]
+  };
+
+  const simple: Recipe = {
+    id: "summary-simple",
+    name: "Simple",
+    description: "",
+    notes: "",
+    useAsPreferment: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ingredients: [
+      ingredient("flour", "Harina", 1000, "flour", 100),
+      ingredient("water", "Agua", 650, "water", 65),
+      ingredient("salt", "Sal", 20, "salt", 2),
+      ingredient("yeast", "Levadura", 10, "yeast", 1)
+    ]
+  };
+
+  const poolish100: Recipe = {
+    id: "summary-poolish-100",
+    name: "Poolish 100",
+    description: "",
+    notes: "",
+    useAsPreferment: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ingredients: [
+      ingredient("poolish-flour", "Harina", 300, "flour", 100),
+      ingredient("poolish-water", "Agua", 300, "water", 100)
+    ]
+  };
+
+  const focaccia: Recipe = {
+    id: "summary-focaccia",
+    name: "Focaccia",
+    description: "",
+    notes: "",
+    useAsPreferment: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ingredients: [
+      ingredient("flour", "Harina", 600, "flour", 100),
+      ingredient("water", "Agua", 390, "water", 65),
+      {
+        ...ingredient("poolish", "Poolish 100", 600, "preferment", 50),
+        linkedRecipeId: poolish100.id,
+        linkedRecipeName: poolish100.name
+      },
+      ingredient("oil", "Aceite", 30, "fat", 5),
+      ingredient("salt", "Sal", 12, "salt", 2)
+    ]
+  };
+
+  const lookup = (recipeId: string) => {
+    if (recipeId === starter60.id) {
+      return starter60;
+    }
+
+    if (recipeId === poolish100.id) {
+      return poolish100;
+    }
+
+    return undefined;
+  };
+
+  assertEqual(getRecipeSummary(lactal, lookup).doughWeight, 3085.5);
+  assertEqual(getRecipeSummary(lactal).doughWeight, 3580.5);
+  assertEqual(getRecipeSummary(simple).doughWeight, 1680);
+  assertEqual(getRecipeSummary(focaccia, lookup).doughWeight, 1032);
+  assertEqual(getRecipeSummary(focaccia).doughWeight, 1632);
+
+  const missingPrefermentRecipe: Recipe = {
+    ...focaccia,
+    id: "summary-missing-pref",
+    ingredients: focaccia.ingredients.map((ingredient) =>
+      ingredient.id === "poolish"
+        ? {
+            ...ingredient,
+            linkedRecipeId: "missing-pref",
+            linkedRecipeName: "Falta"
+          }
+        : ingredient
+    )
+  };
+
+  assertEqual(getRecipeSummary(missingPrefermentRecipe, lookup).doughWeight, 1632);
+}
+
 export function runBakerValidation() {
   runSimpleFormulaCase();
   runFatFormulaCase();
@@ -925,6 +1050,7 @@ export function runBakerValidation() {
   runTwoFloursWithoutPrefermentCase();
   runTwoFloursPrefermentCase();
   runScalingMultiFlourCase();
+  runRecipeSummaryCase();
 
   return "baker validation passed";
 }
