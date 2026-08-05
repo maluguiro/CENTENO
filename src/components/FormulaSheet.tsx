@@ -176,8 +176,16 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [flourTargetInput, setFlourTargetInput] = useState(
     formatDecimalInput(getTotalFlour(recipe.ingredients))
   );
+  const prefermentRecipes = useMemo(
+    () => recipes.filter((item) => item.id !== recipe.id && item.useAsPreferment),
+    [recipe.id, recipes]
+  );
+  const recipeLookup = useMemo(() => new Map(recipes.map((item) => [item.id, item])), [recipes]);
+  const flourTotal = getTotalFlour(recipe.ingredients);
+  const primaryFlourQuantity = getPrimaryFlourQuantity(recipe.ingredients);
+  const lookupRecipe = (linkedRecipeId: string) => recipeLookup.get(linkedRecipeId);
   const [doughTargetInput, setDoughTargetInput] = useState(
-    formatDecimalInput(getDoughWeight(recipe.ingredients))
+    formatDecimalInput(getDoughWeight(recipe.ingredients, lookupRecipe, recipe.id))
   );
   const [pieceCountInput, setPieceCountInput] = useState(
     recipe.scalingTarget?.mode === "pieces" && recipe.scalingTarget.pieces
@@ -194,15 +202,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [prefermentQuantityInput, setPrefermentQuantityInput] = useState("");
   const [prefermentHelpVisible, setPrefermentHelpVisible] = useState(false);
   const [scalingHelpVisible, setScalingHelpVisible] = useState(false);
-
-  const prefermentRecipes = useMemo(
-    () => recipes.filter((item) => item.id !== recipe.id && item.useAsPreferment),
-    [recipe.id, recipes]
-  );
-  const recipeLookup = useMemo(() => new Map(recipes.map((item) => [item.id, item])), [recipes]);
-  const flourTotal = getTotalFlour(recipe.ingredients);
-  const primaryFlourQuantity = getPrimaryFlourQuantity(recipe.ingredients);
-  const lookupRecipe = (linkedRecipeId: string) => recipeLookup.get(linkedRecipeId);
   const editingIngredient = editingIngredientId
     ? recipe.ingredients.find((ingredient) => ingredient.id === editingIngredientId) ?? null
     : null;
