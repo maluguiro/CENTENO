@@ -38,73 +38,73 @@ type GuideModalProps = {
 
 const guideSteps: GuideStep[] = [
   {
-    icon: "🌾",
+    icon: "Manual",
     title: "Bienvenida a CENTENO",
     body:
-      "CENTENO es una libreta de formulas para panaderia y pasteleria. Podes crear recetas, calcular porcentajes panaderos, ajustar cantidades, usar prefermentos y compartir tus formulas.",
+      "CENTENO es una libreta de obrador para guardar, escalar y compartir formulas panaderas. No funciona como una calculadora generica: trabaja con porcentaje panadero y con una harina base clara.",
     targetKey: "brandHeader"
   },
   {
-    icon: "📚",
+    icon: "Home",
     title: "Home y recetas",
     body:
       "En la pantalla principal vas a ver tus recetas ordenadas alfabeticamente. Toca una receta para abrirla o mantenela presionada para ver acciones rapidas como duplicar, exportar, editar o eliminar.",
     targetKey: "recipeList"
   },
   {
-    icon: "🧁",
+    icon: "Filtro",
     title: "Panaderia y pasteleria",
     body:
       "Usa el boton de cupcake para ver solo recetas de pasteleria. Toca el pan para volver a ver todas las recetas. Al crear o editar una receta podes marcar si es Panaderia o Pasteleria.",
     targetKey: "categoryFilter"
   },
   {
-    icon: "➕",
+    icon: "Nueva",
     title: "Crear una receta",
     body:
       "Toca Nueva receta para crear una formula. Podes definir nombre, descripcion, tipo de receta y si queres que pueda usarse como prefermento.",
     targetKey: "newRecipeFab"
   },
   {
-    icon: "📐",
-    title: "Ingredientes y porcentajes",
+    icon: "Base",
+    title: "Harina base",
     body:
-      "La harina total es siempre el 100%. Los demas ingredientes se calculan en relacion con esa harina. Por ejemplo, 650 g de agua sobre 1000 g de harina equivale a 65% de hidratacion.",
+      "La primera harina de la receta es la harina base y representa el 100%. Si queres que la base sea integral, centeno, fuerza o 000, edita el nombre de esa primera harina. Esa harina no baja por debajo de otros ingredientes.",
     preview: "formula"
   },
   {
-    icon: "✍️",
-    title: "Editar ingredientes",
+    icon: "Harinas",
+    title: "Harinas secundarias y porcentajes",
     body:
-      "En cada receta podes agregar, editar o quitar ingredientes. Si cambias gramos o porcentajes, CENTENO recalcula la formula para mantener las proporciones.",
+      "Las otras harinas tambien van como rol Harina. Se expresan como porcentaje sobre la harina base. Agua, sal, azucar, grasas, semillas y prefermentos se calculan sobre la harina total real. Si una harina forma parte de la formula, no la cargues como Otro.",
     preview: "editor"
   },
   {
-    icon: "⚖️",
-    title: "Ajustar receta",
+    icon: "H2O",
+    title: "Hidratacion real",
     body:
-      "Desde el menu de la receta podes ajustar por harina total, masa total o piezas. Si dejas un ajuste activo, CENTENO mantiene ese objetivo aunque agregues ingredientes. Podes quitarlo desde el menu.",
+      "La hidratacion principal es agua o liquidos sobre harina total. La barra muestra esa hidratacion real con el simbolo 💧. Las grasas y aceites pueden influir en suavidad o sensacion de humedad, pero no se suman a la hidratacion panadera principal.",
     preview: "target"
   },
   {
-    icon: "🫓",
-    title: "Prefermentos",
+    icon: "Pref",
+    title: "Prefermentos y masa madre",
     body:
-      "Podes marcar una receta como prefermento para usarla dentro de otra. CENTENO descuenta la harina y el agua que ya vienen dentro del prefermento y muestra el detalle [total - aporte].",
+      "Un prefermento vinculado aporta harina y agua internas. CENTENO descuenta visualmente ese aporte de la harina principal y del liquido principal para evitar contar dos veces la formula. Las harinas secundarias no reciben descuento automatico.",
     preview: "breakdown"
   },
   {
-    icon: "📤",
-    title: "Exportar e importar",
+    icon: "Masa",
+    title: "Masa y ajustes",
     body:
-      "Desde una receta podes exportarla como texto legible o como codigo para importar. El texto sirve para WhatsApp o notas. El codigo sirve para cargar la receta en otro CENTENO desde Configuracion -> Importar receta.",
+      "La masa mostrada en CENTENO es masa neta cuando hay prefermentos vinculados. Podes ajustar una receta por harina total, por masa deseada o por piezas. Si dejas un ajuste activo, CENTENO intenta mantener ese objetivo hasta que lo quites.",
     preview: "export"
   },
   {
-    icon: "⚙️",
-    title: "Configuracion y ayuda",
+    icon: "Salir",
+    title: "Exportar, importar y ayuda",
     body:
-      "En la ruedita de configuracion podes importar recetas, restaurar recetas iniciales, eliminar todas las recetas, leer la ayuda y volver a abrir esta guia cuando quieras.",
+      "Compartir como texto sirve para WhatsApp, notas o impresion. El archivo .centeno sirve para pasar recetas entre instalaciones de CENTENO. El codigo de respaldo queda como opcion avanzada. Desde Configuracion podes volver a abrir este manual cuando quieras.",
     targetKey: "settingsButton"
   }
 ];
@@ -291,16 +291,16 @@ function GuidePreview({ preview }: { preview: GuidePreviewKind }) {
       <View style={styles.previewCard}>
         <Text style={styles.previewTitle}>Ejemplo rapido</Text>
         <View style={styles.previewLine}>
-          <Text style={styles.previewLabel}>Harina total</Text>
+          <Text style={styles.previewLabel}>Harina base</Text>
           <Text style={styles.previewValue}>1000 g = 100%</Text>
         </View>
         <View style={styles.previewLine}>
-          <Text style={styles.previewLabel}>Agua</Text>
-          <Text style={styles.previewValue}>650 g = 65%</Text>
+          <Text style={styles.previewLabel}>Harina secundaria</Text>
+          <Text style={styles.previewValue}>100 g = 10%</Text>
         </View>
         <View style={styles.previewLine}>
-          <Text style={styles.previewLabel}>Sal</Text>
-          <Text style={styles.previewValue}>20 g = 2%</Text>
+          <Text style={styles.previewLabel}>Agua</Text>
+          <Text style={styles.previewValue}>770 g = 70%</Text>
         </View>
       </View>
     );
@@ -309,14 +309,14 @@ function GuidePreview({ preview }: { preview: GuidePreviewKind }) {
   if (preview === "editor") {
     return (
       <View style={styles.previewCard}>
-        <Text style={styles.previewTitle}>Edicion de ingrediente</Text>
+        <Text style={styles.previewTitle}>Lectura de formula</Text>
         <View style={styles.previewField}>
-          <Text style={styles.previewFieldLabel}>Cantidad</Text>
-          <Text style={styles.previewFieldValue}>500 g</Text>
+          <Text style={styles.previewFieldLabel}>Agua</Text>
+          <Text style={styles.previewFieldValue}>770 g = 70%</Text>
         </View>
         <View style={styles.previewField}>
-          <Text style={styles.previewFieldLabel}>Porcentaje panadero</Text>
-          <Text style={styles.previewFieldValue}>100%</Text>
+          <Text style={styles.previewFieldLabel}>Aceite</Text>
+          <Text style={styles.previewFieldValue}>40 g = 3.6%</Text>
         </View>
       </View>
     );
@@ -325,10 +325,13 @@ function GuidePreview({ preview }: { preview: GuidePreviewKind }) {
   if (preview === "target") {
     return (
       <View style={styles.previewCard}>
-        <Text style={styles.previewTitle}>Objetivo activo</Text>
+        <Text style={styles.previewTitle}>Hidratacion principal</Text>
         <View style={styles.previewChip}>
-          <Text style={styles.previewChipLabel}>2 piezas x 900 g = 1800 g de masa</Text>
+          <Text style={styles.previewChipLabel}>70% 💧 sobre harina total</Text>
         </View>
+        <Text style={styles.previewOptionBody}>
+          El aceite aporta suavidad, pero no cambia la hidratacion principal visible.
+        </Text>
       </View>
     );
   }
@@ -363,14 +366,16 @@ function GuidePreview({ preview }: { preview: GuidePreviewKind }) {
 
   return (
     <View style={styles.previewCard}>
-      <Text style={styles.previewTitle}>Exportar receta</Text>
+      <Text style={styles.previewTitle}>Masa y ajuste activo</Text>
       <View style={styles.previewOption}>
-        <Text style={styles.previewOptionTitle}>Compartir como texto</Text>
-        <Text style={styles.previewOptionBody}>Para WhatsApp, notas o imprimir.</Text>
+        <Text style={styles.previewOptionTitle}>Masa neta</Text>
+        <Text style={styles.previewOptionBody}>
+          Evita duplicar harina y agua ya contenidas en el prefermento.
+        </Text>
       </View>
       <View style={styles.previewOption}>
-        <Text style={styles.previewOptionTitle}>Codigo para importar</Text>
-        <Text style={styles.previewOptionBody}>Para cargar esta receta en otro CENTENO.</Text>
+        <Text style={styles.previewOptionTitle}>Objetivo activo</Text>
+        <Text style={styles.previewOptionBody}>Podes escalar por harina total, masa o piezas.</Text>
       </View>
     </View>
   );

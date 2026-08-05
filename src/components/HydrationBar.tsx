@@ -8,6 +8,7 @@ type HydrationBarProps = {
 
 export function HydrationBar({ hydration }: HydrationBarProps) {
   const width = `${Math.max(0, Math.min(100, hydration))}%` as `${number}%`;
+  const hydrationLabel = `💧 ${hydration}%`;
 
   return (
     <View style={styles.wrap}>
@@ -16,7 +17,7 @@ export function HydrationBar({ hydration }: HydrationBarProps) {
         <View style={styles.barWrap}>
           <View style={styles.track}>
             <View style={[styles.fill, { width }]} />
-            <Text style={styles.centerValue}>{hydration}%</Text>
+            <Text style={styles.centerValue}>{hydrationLabel}</Text>
           </View>
         </View>
         <Text style={styles.edge}>100%</Text>

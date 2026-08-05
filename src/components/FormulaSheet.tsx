@@ -730,10 +730,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       </View>
 
       <HydrationBar hydration={summary.hydration} />
-
-      <View style={styles.statusRow}>
-        <Text style={styles.statusText}>Indice de humedad {summary.moisture}%</Text>
-      </View>
       {activeScalingLabel ? (
         <View style={styles.activeTargetRow}>
           <View style={styles.activeTargetChip}>
