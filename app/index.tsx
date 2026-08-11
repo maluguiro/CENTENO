@@ -25,10 +25,15 @@ import {
 } from "@/components/GuideModal";
 import { setClipboardText } from "@/lib/clipboard";
 import { getGuideSeen, setGuideSeen } from "@/lib/guideStorage";
-import { pickCentenoRecipeFileContent, shareCentenoRecipeFile } from "@/lib/recipeFileShare";
-import { exportRecipeToJson } from "@/lib/recipeImportExport";
+import {
+  pickCentenoRecipeFileContent,
+  shareCentenoRecipeFile,
+  shareCentenoRecipesBackupFile
+} from "@/lib/recipeFileShare";
 import { getClipboardText } from "@/lib/clipboard";
 import {
+  exportRecipeToJson,
+  parseImportedCentenoFile,
   parseImportedRecipe,
   prepareImportedRecipe
 } from "@/lib/recipeImportExport";
@@ -97,6 +102,7 @@ export default function HomeScreen() {
     deleteAllRecipes,
     deleteRecipe,
     importRecipe,
+    importRecipes,
     isReady,
     recipes,
     restoreSampleRecipes,
@@ -448,16 +454,43 @@ export default function HomeScreen() {
         return;
       }
 
-      const parsedRecipe = parseImportedRecipe(result.content);
-      const preparedRecipe = prepareImportedRecipe(parsedRecipe, recipes);
+      const imported = parseImportedCentenoFile(result.content, recipes);
 
-      importRecipe(preparedRecipe);
+      if (imported.type === "backup") {
+        const importedCount = importRecipes(imported.recipes);
+        closeImportModal();
+        Alert.alert(
+          importedCount > 0 ? "Backup importado correctamente." : "El backup no agrego recetas nuevas."
+        );
+        return;
+      }
+
+      importRecipe(imported.recipes[0]);
       closeImportModal();
       Alert.alert("Receta importada correctamente.");
     } catch {
       setImportError(
         "No se pudo importar el archivo. Asegurate de elegir un archivo exportado desde CENTENO."
       );
+    }
+  }
+
+  async function handleExportAllRecipes() {
+    if (!recipes.length) {
+      Alert.alert("No hay recetas para exportar.");
+      return;
+    }
+
+    try {
+      await shareCentenoRecipesBackupFile(recipes);
+      setSettingsVisible(false);
+    } catch (error) {
+      if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
+        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
+        return;
+      }
+
+      Alert.alert("No se pudo crear el backup del recetario.");
     }
   }
 
@@ -903,6 +936,15 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
               >
                 <Text style={styles.toolActionTitle}>Importar receta</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleExportAllRecipes}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>Exportar todas las recetas</Text>
+                <Text style={styles.toolActionDescription}>
+                  Crea un respaldo completo de tu recetario.
+                </Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -1520,6 +1562,12 @@ const styles = StyleSheet.create({
   toolActionTitle: {
     color: theme.colors.text,
     fontSize: 15
+  },
+  toolActionDescription: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4
   },
   toolActionDanger: {
     color: theme.colors.danger

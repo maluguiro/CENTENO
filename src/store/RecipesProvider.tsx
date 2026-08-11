@@ -70,6 +70,7 @@ type RecipesAction =
   | { type: "hydrate"; payload: Recipe[] }
   | { type: "create"; payload: Recipe }
   | { type: "import"; payload: Recipe }
+  | { type: "importMany"; payload: Recipe[] }
   | { type: "restoreSamples"; payload: Recipe[] }
   | { type: "deleteAll" }
   | { type: "clearScalingTarget"; payload: { id: string; restoreSnapshot?: boolean } }
@@ -81,6 +82,7 @@ type RecipesContextValue = {
   isReady: boolean;
   createRecipe: (draft: RecipeDraft) => string;
   importRecipe: (recipe: Recipe) => string;
+  importRecipes: (recipes: Recipe[]) => number;
   restoreSampleRecipes: () => void;
   deleteAllRecipes: () => void;
   clearScalingTarget: (id: string, restoreSnapshot?: boolean) => void;
@@ -156,6 +158,9 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
     }
     case "import": {
       return { recipes: [normalizeRecipe(action.payload), ...state.recipes] };
+    }
+    case "importMany": {
+      return { recipes: [...action.payload.map(normalizeRecipe), ...state.recipes] };
     }
     case "restoreSamples": {
       return {
@@ -309,6 +314,18 @@ export function RecipesProvider({ children }: PropsWithChildren) {
         });
 
         return recipe.id;
+      },
+      importRecipes: (recipes) => {
+        if (!recipes.length) {
+          return 0;
+        }
+
+        dispatch({
+          type: "importMany",
+          payload: recipes
+        });
+
+        return recipes.length;
       },
       restoreSampleRecipes: () => {
         dispatch({

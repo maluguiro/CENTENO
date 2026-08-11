@@ -1,7 +1,8 @@
-import { exportRecipeToJson } from "@/lib/recipeImportExport";
+import { exportRecipeToJson, exportRecipesToJson } from "@/lib/recipeImportExport";
 import type { Recipe } from "@/types/recipe";
 
 const FALLBACK_FILE_BASENAME = "receta-centeno";
+const FALLBACK_BACKUP_FILE_BASENAME = "centeno-recetas";
 
 function getFileSystemModule() {
   try {
@@ -42,6 +43,14 @@ export function buildCentenoFileName(recipeName: string) {
   return `${normalizeFileBaseName(recipeName)}.centeno`;
 }
 
+export function buildCentenoBackupFileName(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${normalizeFileBaseName(`${FALLBACK_BACKUP_FILE_BASENAME}-${year}-${month}-${day}`)}.centeno`;
+}
+
 export async function createCentenoRecipeFile(recipe: Recipe) {
   const fileSystem = getFileSystemModule();
 
@@ -51,6 +60,19 @@ export async function createCentenoRecipeFile(recipe: Recipe) {
 
   const fileUri = `${fileSystem.cacheDirectory}${buildCentenoFileName(recipe.name)}`;
   await fileSystem.writeAsStringAsync(fileUri, exportRecipeToJson(recipe));
+
+  return fileUri;
+}
+
+export async function createCentenoRecipesBackupFile(recipes: Recipe[]) {
+  const fileSystem = getFileSystemModule();
+
+  if (!fileSystem?.cacheDirectory || !fileSystem.writeAsStringAsync) {
+    throw new Error("FILE_SYSTEM_UNAVAILABLE");
+  }
+
+  const fileUri = `${fileSystem.cacheDirectory}${buildCentenoBackupFileName()}`;
+  await fileSystem.writeAsStringAsync(fileUri, exportRecipesToJson(recipes));
 
   return fileUri;
 }
@@ -72,6 +94,28 @@ export async function shareCentenoRecipeFile(recipe: Recipe) {
 
   await sharing.shareAsync(fileUri, {
     dialogTitle: "Compartir archivo CENTENO",
+    mimeType: "application/json",
+    UTI: "public.json"
+  });
+}
+
+export async function shareCentenoRecipesBackupFile(recipes: Recipe[]) {
+  const sharing = getSharingModule();
+
+  if (!sharing?.isAvailableAsync || !sharing?.shareAsync) {
+    throw new Error("SHARING_UNAVAILABLE");
+  }
+
+  const available = await sharing.isAvailableAsync();
+
+  if (!available) {
+    throw new Error("SHARING_UNAVAILABLE");
+  }
+
+  const fileUri = await createCentenoRecipesBackupFile(recipes);
+
+  await sharing.shareAsync(fileUri, {
+    dialogTitle: "Compartir backup CENTENO",
     mimeType: "application/json",
     UTI: "public.json"
   });
