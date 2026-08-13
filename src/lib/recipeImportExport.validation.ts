@@ -18,6 +18,21 @@ import { buildCentenoBackupFileName, buildCentenoFileName } from "@/lib/recipeFi
 import { canMoveIngredient, getPrimaryFlourIndex, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { sampleRecipes } from "@/data/sampleRecipes";
+import {
+  parseRichTextDocument,
+  richTextToPlainText,
+  serializeRichTextDocument,
+  toggleLinePrefixInDocument,
+  toggleMarkInDocument,
+  updateRichTextDocumentText
+} from "@/lib/richText";
+import {
+  getDefaultRecipeViewTab,
+  getRecipeCategoryIcon,
+  getNotesTabSections,
+  getPreparationTabSections,
+  getRecipeTabSections
+} from "@/lib/recipeView";
 import { mergeMissingSampleRecipes } from "@/store/RecipesProvider";
 import type { Recipe } from "@/types/recipe";
 
@@ -49,7 +64,31 @@ const baseRecipe: Recipe = {
   id: "recipe-1",
   name: "Pan de campo",
   description: "Receta de prueba",
-  notes: "Notas",
+  notes: "**Tip**\n- Primer punto\n1. Paso",
+  preparation: {
+    steps: ["Mezclar ingredientes.", "Amasar hasta lograr estructura."]
+  },
+  fermentation: {
+    instructions: "Fermentar en bloque.",
+    visualCue: "Hasta que la masa se vea aireada.",
+    timeMinMinutes: 60,
+    timeMaxMinutes: 90,
+    temperatureMinC: 24,
+    temperatureMaxC: 26
+  },
+  baking: {
+    instructions: "Hornear hasta dorar.",
+    timeMinMinutes: 35,
+    timeMaxMinutes: 45,
+    temperatureMinC: 210,
+    temperatureMaxC: 220
+  },
+  yield: {
+    quantity: 2,
+    unit: "piezas",
+    weightPerUnit: 900,
+    weightUnit: "g"
+  },
   category: "bakery",
   useAsPreferment: false,
   scalingTarget: {
@@ -78,6 +117,35 @@ const baseRecipe: Recipe = {
       bakerPercentage: 60
     }
   ]
+};
+
+const legacyRecipePayload = {
+  id: "legacy-recipe",
+  name: "Receta vieja",
+  description: "Texto viejo",
+  notes: "Notas viejas",
+  category: "bakery",
+  useAsPreferment: false,
+  ingredients: [
+    {
+      id: "legacy-flour",
+      name: "Harina",
+      quantity: 500,
+      unit: "g",
+      role: "flour",
+      bakerPercentage: 100
+    },
+    {
+      id: "legacy-water",
+      name: "Agua",
+      quantity: 300,
+      unit: "g",
+      role: "water",
+      bakerPercentage: 60
+    }
+  ],
+  createdAt: "2026-07-17T10:00:00.000Z",
+  updatedAt: "2026-07-17T10:00:00.000Z"
 };
 
 const prefermentRecipe: Recipe = {
@@ -189,7 +257,7 @@ function runRecipeValidation() {
   const parsedPayload = JSON.parse(exported) as { type: string; version: number; recipe: Recipe };
 
   assert(parsedPayload.type === "centeno.recipe", "Export type invalido.");
-  assert(parsedPayload.version === 1, "Export version invalida.");
+  assert(parsedPayload.version === 2, "Export version invalida.");
 
   const imported = parseImportedRecipe(exported);
   assert(imported.name === baseRecipe.name, "Import no conserva el nombre.");
@@ -197,6 +265,20 @@ function runRecipeValidation() {
   assert(imported.useAsPreferment === false, "Import no conserva useAsPreferment.");
   assert(imported.scalingTarget?.mode === "pieces", "Import no conserva scalingTarget.");
   assert(imported.scalingTarget?.pieces === 2, "Import no conserva piezas.");
+  assert(imported.preparation?.steps.length === 2, "Import no conserva preparation.");
+  assert(
+    imported.fermentation?.timeMinMinutes === 60 &&
+      imported.fermentation.temperatureMaxC === 26,
+    "Import no conserva fermentation."
+  );
+  assert(
+    imported.baking?.temperatureMinC === 210 && imported.baking.timeMaxMinutes === 45,
+    "Import no conserva baking."
+  );
+  assert(
+    imported.yield?.quantity === 2 && imported.yield.weightPerUnit === 900,
+    "Import no conserva yield."
+  );
   assert(
     buildCentenoFileName("Focaccia") === "Focaccia.centeno",
     "El nombre simple debe conservarse."
@@ -225,10 +307,21 @@ function runRecipeValidation() {
   assert(shareText.includes("Ingredientes:"), "El texto debe incluir ingredientes.");
   assert(shareText.includes("500 g"), "El texto debe incluir gramos.");
   assert(shareText.includes("Hidratacion: 60%"), "El texto debe incluir hidratacion.");
+  assert(shareText.includes("Preparacion:"), "El texto debe incluir preparation.");
+  assert(shareText.includes("Fermentacion:"), "El texto debe incluir fermentation.");
+  assert(shareText.includes("Horneado:"), "El texto debe incluir baking.");
+  assert(shareText.includes("Rendimiento: 2 piezas · ~900 g c/u"), "El texto debe incluir yield.");
+  assert(shareText.includes("• Primer punto"), "El rich text debe convertirse a texto legible.");
+  assert(shareText.includes("1. Paso"), "La lista numerada debe conservarse en texto.");
   assert(!shareText.includes('"type": "centeno.recipe"'), "El texto legible no debe ser JSON.");
   assertThrows(
     () => parseImportedRecipe(shareText),
     "El texto legible no debe importarse como codigo."
+  );
+
+  assert(
+    richTextToPlainText(baseRecipe.notes) === "Tip\n• Primer punto\n1. Paso",
+    "El rich text debe poder degradarse a texto plano."
   );
 
   const missingCategoryJson = JSON.stringify({
@@ -236,7 +329,7 @@ function runRecipeValidation() {
     version: 1,
     exportedAt: "2026-07-17T10:00:00.000Z",
     recipe: {
-      ...baseRecipe,
+      ...legacyRecipePayload,
       category: undefined
     }
   });
@@ -245,6 +338,13 @@ function runRecipeValidation() {
   assert(
     missingCategoryRecipe.useAsPreferment === false,
     "useAsPreferment por defecto incorrecto."
+  );
+  assert(
+    missingCategoryRecipe.preparation === undefined &&
+      missingCategoryRecipe.fermentation === undefined &&
+      missingCategoryRecipe.baking === undefined &&
+      missingCategoryRecipe.yield === undefined,
+    "Una receta V1 debe seguir siendo valida sin nuevos campos."
   );
 
   assertThrows(() => parseImportedRecipe("no es json"), "JSON invalido debe fallar.");
@@ -258,7 +358,7 @@ function runRecipeValidation() {
   assertThrows(
     () =>
       parseImportedRecipe(
-        JSON.stringify({ type: "centeno.recipe", version: 2, recipe: baseRecipe })
+        JSON.stringify({ type: "centeno.recipe", version: 3, recipe: baseRecipe })
       ),
     "Version invalida debe fallar."
   );
@@ -273,6 +373,7 @@ function runRecipeValidation() {
     prepared.ingredients[0].id !== baseRecipe.ingredients[0].id,
     "Los ingredientes importados deben tener nuevos ids."
   );
+  assert(prepared.preparation?.steps[0] === "Mezclar ingredientes.", "prepareImportedRecipe debe conservar preparation.");
   assert(
     prepared.name === "Pan de campo (importada)",
     "El primer duplicado debe usar sufijo importada."
@@ -456,7 +557,7 @@ function runRecipeValidation() {
     recipes: Recipe[];
   };
   assert(backupPayload.type === "centeno.recipes.backup", "Type de backup invalido.");
-  assert(backupPayload.version === 1, "Version de backup invalida.");
+  assert(backupPayload.version === 2, "Version de backup invalida.");
   assert(Array.isArray(backupPayload.recipes) && backupPayload.recipes.length === 0, "El backup vacio debe exportar recipes vacio.");
   assert(
     isRecipeBackupPayload(backupPayload),
@@ -505,6 +606,10 @@ function runRecipeValidation() {
     importedParent?.scalingTarget?.mode === "doughWeight" &&
       importedParent.scalingTarget.doughWeight === 3085.5,
     "El backup debe conservar scalingTarget."
+  );
+  assert(
+    importedPreferment?.useAsPreferment === true,
+    "El backup debe conservar useAsPreferment."
   );
 
   const lookup = new Map(importedBackupIntoEmpty.map((recipe) => [recipe.id, recipe]));
@@ -608,7 +713,7 @@ function runRecipeValidation() {
 
   const sameIdConflictBackup = {
     type: "centeno.recipes.backup",
-    version: 1,
+    version: 2,
     exportedAt: "2026-08-10T00:00:00.000Z",
     recipes: [
       {
@@ -639,7 +744,7 @@ function runRecipeValidation() {
   assertThrows(
     () =>
       parseImportedRecipesBackup(
-        JSON.stringify({ type: "centeno.recipes.backup", version: 2, recipes: [] })
+        JSON.stringify({ type: "centeno.recipes.backup", version: 3, recipes: [] })
       ),
     "Un backup con version incorrecta debe fallar."
   );
@@ -654,7 +759,7 @@ function runRecipeValidation() {
   const missingLinkedBackup = importRecipesFromJson(
     {
       type: "centeno.recipes.backup",
-      version: 1,
+      version: 2,
       exportedAt: "2026-08-10T00:00:00.000Z",
       recipes: [
         {
@@ -682,6 +787,147 @@ function runRecipeValidation() {
     getRecipeSummary(missingLinkedBackup[0]).doughWeight,
     3580.5,
     "Sin lookup el fallback debe seguir devolviendo una masa coherente."
+  );
+
+  assert(getDefaultRecipeViewTab() === "recipe", "La receta debe abrir siempre en la tab Receta.");
+  assert(getRecipeCategoryIcon("bakery") === "🍞", "Panaderia debe usar icono pan.");
+  assert(getRecipeCategoryIcon("pastry") === "🧁", "Pasteleria debe usar icono cupcake.");
+  const recipeSections = getRecipeTabSections(baseRecipe);
+  assert(recipeSections.description === true, "La tab Receta debe poder mostrar la descripcion.");
+  const preparationSections = getPreparationTabSections(baseRecipe);
+  assert(preparationSections.preparation === true, "Preparacion debe mostrar steps cuando existen.");
+  assert(preparationSections.fermentation === true, "Preparacion debe mostrar fermentacion cuando existe.");
+  assert(preparationSections.baking === true, "Preparacion debe mostrar horneado cuando existe.");
+  const notesSections = getNotesTabSections(baseRecipe);
+  assert(notesSections.notes === true, "Notas debe mostrar notes cuando existen.");
+  const recipeWithoutEditorial: Recipe = {
+    ...baseRecipe,
+    description: "",
+    notes: "",
+    preparation: undefined,
+    fermentation: undefined,
+    baking: undefined,
+    yield: undefined
+  };
+  assert(
+    getPreparationTabSections(recipeWithoutEditorial).preparation === false &&
+      getPreparationTabSections(recipeWithoutEditorial).fermentation === false &&
+      getPreparationTabSections(recipeWithoutEditorial).baking === false,
+    "Preparacion debe omitir bloques vacios."
+  );
+  assert(
+    getNotesTabSections(recipeWithoutEditorial).notes === false,
+    "Notas debe omitir contenido inexistente."
+  );
+
+  const richDocument = parseRichTextDocument("**Tip**\nversion simple");
+  assert(richDocument.text === "Tip\nversion simple", "El parser rich text debe ocultar markdown al editor.");
+  assert(
+    serializeRichTextDocument(richDocument) === "**Tip**\nversion simple",
+    "El serializador rich text debe conservar markdown liviano."
+  );
+  const toggledBold = toggleMarkInDocument(
+    parseRichTextDocument("version con menos aceite"),
+    { start: 8, end: 24 },
+    "bold"
+  );
+  assert(
+    serializeRichTextDocument(toggledBold) === "version **con menos aceite**",
+    "La negrita debe persistirse sobre el texto seleccionado."
+  );
+  const toggledItalic = toggleMarkInDocument(
+    parseRichTextDocument("masa suave"),
+    { start: 0, end: 4 },
+    "italic"
+  );
+  assert(
+    serializeRichTextDocument(toggledItalic) === "*masa* suave",
+    "La cursiva debe persistirse."
+  );
+  const toggledUnderline = toggleMarkInDocument(
+    parseRichTextDocument("fermentacion corta"),
+    { start: 0, end: 12 },
+    "underline"
+  );
+  assert(
+    serializeRichTextDocument(toggledUnderline) === "__fermentacion__ corta",
+    "El subrayado debe persistirse."
+  );
+  const listed = toggleLinePrefixInDocument(
+    parseRichTextDocument("primer item\nsegundo item"),
+    { start: 0, end: 22 },
+    "bullet"
+  );
+  assert(
+    serializeRichTextDocument(listed.document) === "- primer item\n- segundo item",
+    "La lista con vietas debe persistirse."
+  );
+  const numbered = toggleLinePrefixInDocument(
+    parseRichTextDocument("amasar\nfermentar"),
+    { start: 0, end: 17 },
+    "numbered"
+  );
+  assert(
+    serializeRichTextDocument(numbered.document) === "1. amasar\n2. fermentar",
+    "La lista numerada debe persistirse."
+  );
+  const insertedBold = updateRichTextDocumentText(
+    parseRichTextDocument("abc"),
+    "abcd",
+    { start: 3, end: 3 },
+    "bold"
+  );
+  assert(
+    serializeRichTextDocument(insertedBold.document) === "abc**d**",
+    "El texto nuevo debe poder heredar formato activo."
+  );
+
+  const partialFieldsRecipe = parseImportedRecipe(
+    JSON.stringify({
+      type: "centeno.recipe",
+      version: 2,
+      exportedAt: "2026-08-10T00:00:00.000Z",
+      recipe: {
+        ...baseRecipe,
+        notes: "Texto plano heredado",
+        preparation: { steps: ["Unico paso"] },
+        fermentation: { instructions: "Reposar." },
+        baking: { temperatureMinC: 180 },
+        yield: { unit: "lactales" }
+      }
+    })
+  );
+  assert(partialFieldsRecipe.notes === "Texto plano heredado", "Notes plano debe seguir importando.");
+  assert(partialFieldsRecipe.preparation?.steps.length === 1, "Preparation parcial invalida.");
+  assert(partialFieldsRecipe.fermentation?.instructions === "Reposar.", "Fermentation parcial invalida.");
+  assert(partialFieldsRecipe.baking?.temperatureMinC === 180, "Baking parcial invalido.");
+  assert(partialFieldsRecipe.yield?.unit === "lactales", "Yield parcial invalido.");
+
+  const roundTripRecipe = parseImportedRecipe(exportRecipeToJson(baseRecipe));
+  assert(roundTripRecipe.notes === baseRecipe.notes, "Round-trip debe conservar rich notes.");
+  assert(
+    roundTripRecipe.preparation?.steps.join("|") === baseRecipe.preparation?.steps.join("|"),
+    "Round-trip debe conservar preparation."
+  );
+  assertApprox(
+    getRecipeSummary(roundTripRecipe).baseQuantity,
+    getRecipeSummary(baseRecipe).baseQuantity,
+    "Los nuevos campos no deben alterar harina total."
+  );
+  assertApprox(
+    getRecipeSummary(roundTripRecipe).liquids,
+    getRecipeSummary(baseRecipe).liquids,
+    "Los nuevos campos no deben alterar liquidos."
+  );
+  assertApprox(
+    getRecipeSummary(roundTripRecipe).hydration,
+    getRecipeSummary(baseRecipe).hydration,
+    "Los nuevos campos no deben alterar hidratacion."
+  );
+  assertApprox(
+    getRecipeSummary(roundTripRecipe).doughWeight,
+    getRecipeSummary(baseRecipe).doughWeight,
+    "Los nuevos campos no deben alterar masa total."
   );
 
   const mergedSamples = mergeMissingSampleRecipes([baseRecipe], sampleRecipes);

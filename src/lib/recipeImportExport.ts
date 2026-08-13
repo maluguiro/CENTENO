@@ -6,17 +6,21 @@ import type {
   RecipeIngredient,
   RecipeScalingTarget
 } from "@/types/recipe";
+import { normalizeRecipeMetadata } from "@/lib/recipeFields";
+
+const CURRENT_RECIPE_EXPORT_VERSION = 2;
+const CURRENT_RECIPES_BACKUP_VERSION = 2;
 
 type RecipeExportPayload = {
   type: "centeno.recipe";
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   recipe: Recipe;
 };
 
 type RecipesBackupExportPayload = {
   type: "centeno.recipes.backup";
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   recipes: Recipe[];
 };
@@ -133,11 +137,12 @@ function validateRecipePayload(recipePayload: unknown): Recipe {
     throw new Error("La receta importada no tiene ingredientes validos.");
   }
 
+  const metadata = normalizeRecipeMetadata(recipePayload);
+
   return {
     id: normalizeString(recipePayload.id) || "imported-recipe",
     name,
-    description: normalizeOptionalString(recipePayload.description),
-    notes: normalizeOptionalString(recipePayload.notes),
+    ...metadata,
     category: isValidCategory(recipePayload.category) ? recipePayload.category : "bakery",
     useAsPreferment:
       typeof recipePayload.useAsPreferment === "boolean" ? recipePayload.useAsPreferment : false,
@@ -181,6 +186,38 @@ function normalizeComparableRecipe(recipe: Recipe) {
     name: normalizeString(recipe.name),
     description: recipe.description ?? "",
     notes: recipe.notes ?? "",
+    preparation: recipe.preparation
+      ? {
+          steps: [...recipe.preparation.steps]
+        }
+      : null,
+    fermentation: recipe.fermentation
+      ? {
+          instructions: recipe.fermentation.instructions ?? null,
+          visualCue: recipe.fermentation.visualCue ?? null,
+          timeMinMinutes: recipe.fermentation.timeMinMinutes ?? null,
+          timeMaxMinutes: recipe.fermentation.timeMaxMinutes ?? null,
+          temperatureMinC: recipe.fermentation.temperatureMinC ?? null,
+          temperatureMaxC: recipe.fermentation.temperatureMaxC ?? null
+        }
+      : null,
+    baking: recipe.baking
+      ? {
+          instructions: recipe.baking.instructions ?? null,
+          timeMinMinutes: recipe.baking.timeMinMinutes ?? null,
+          timeMaxMinutes: recipe.baking.timeMaxMinutes ?? null,
+          temperatureMinC: recipe.baking.temperatureMinC ?? null,
+          temperatureMaxC: recipe.baking.temperatureMaxC ?? null
+        }
+      : null,
+    yield: recipe.yield
+      ? {
+          quantity: recipe.yield.quantity ?? null,
+          unit: recipe.yield.unit ?? null,
+          weightPerUnit: recipe.yield.weightPerUnit ?? null,
+          weightUnit: recipe.yield.weightUnit ?? null
+        }
+      : null,
     category: recipe.category ?? "bakery",
     useAsPreferment: recipe.useAsPreferment ?? false,
     scalingTarget: recipe.scalingTarget
@@ -243,13 +280,17 @@ function parseCentenoPayload(input: string): unknown {
 }
 
 export function isRecipeBackupPayload(payload: unknown): payload is RecipesBackupExportPayload {
-  return isObject(payload) && payload.type === "centeno.recipes.backup" && payload.version === 1;
+  return (
+    isObject(payload) &&
+    payload.type === "centeno.recipes.backup" &&
+    (payload.version === 1 || payload.version === 2)
+  );
 }
 
 export function exportRecipeToJson(recipe: Recipe) {
   const payload: RecipeExportPayload = {
     type: "centeno.recipe",
-    version: 1,
+    version: CURRENT_RECIPE_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     recipe
   };
@@ -260,7 +301,7 @@ export function exportRecipeToJson(recipe: Recipe) {
 export function exportRecipesToJson(recipes: Recipe[]) {
   const payload: RecipesBackupExportPayload = {
     type: "centeno.recipes.backup",
-    version: 1,
+    version: CURRENT_RECIPES_BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     recipes
   };
@@ -277,7 +318,7 @@ export function validateImportedRecipePayload(payload: unknown): Recipe {
     throw new Error("Tipo de receta invalido.");
   }
 
-  if (payload.version !== 1) {
+  if (payload.version !== 1 && payload.version !== 2) {
     throw new Error("Version de receta invalida.");
   }
 
@@ -293,7 +334,7 @@ export function validateImportedRecipesBackupPayload(payload: unknown): Recipe[]
     throw new Error("Tipo de backup invalido.");
   }
 
-  if (payload.version !== 1) {
+  if (payload.version !== 1 && payload.version !== 2) {
     throw new Error("Version de backup invalida.");
   }
 
@@ -320,8 +361,7 @@ export function prepareImportedRecipe(recipe: Recipe, existingRecipes: Recipe[])
     ...recipe,
     id: makeId(),
     name: getUniqueImportedName(normalizedName, existingRecipes, new Set()),
-    description: recipe.description ?? "",
-    notes: recipe.notes ?? "",
+    ...normalizeRecipeMetadata(recipe),
     category: recipe.category ?? "bakery",
     scalingTarget: recipe.scalingTarget,
     scalingSnapshotIngredients: recipe.scalingSnapshotIngredients?.map((ingredient) => ({
@@ -382,8 +422,7 @@ export function importRecipesFromJson(payload: unknown, existingRecipes: Recipe[
       ...recipe,
       id: finalId,
       name: finalName,
-      description: recipe.description ?? "",
-      notes: recipe.notes ?? "",
+      ...normalizeRecipeMetadata(recipe),
       category: recipe.category ?? "bakery",
       createdAt: normalizeString(recipe.createdAt) || now,
       updatedAt: now

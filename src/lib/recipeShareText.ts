@@ -5,6 +5,16 @@ import {
   getPrefermentBreakdown,
   getTotalFlour
 } from "@/lib/baker";
+import {
+  formatBakingSummary,
+  formatFermentationSummary,
+  formatYieldSummary,
+  hasBaking,
+  hasFermentation,
+  hasPreparation,
+  hasYieldData
+} from "@/lib/recipeFields";
+import { richTextToPlainText } from "@/lib/richText";
 import type { Recipe } from "@/types/recipe";
 
 function formatNumber(value: number) {
@@ -35,6 +45,10 @@ export function formatRecipeAsShareText(
   lines.push("");
   lines.push(`Tipo: ${getCategoryLabel(recipe.category)}`);
 
+  if (recipe.description?.trim()) {
+    lines.push(`Descripcion: ${recipe.description.trim()}`);
+  }
+
   if (hydration > 0) {
     lines.push(`Hidratacion: ${formatNumber(hydration)}%`);
   }
@@ -45,6 +59,10 @@ export function formatRecipeAsShareText(
 
   if (doughWeight > 0) {
     lines.push(`Masa total: ${formatNumber(doughWeight)} g`);
+  }
+
+  if (hasYieldData(recipe.yield)) {
+    lines.push(`Rendimiento: ${formatYieldSummary(recipe.yield)}`);
   }
 
   lines.push("");
@@ -94,10 +112,45 @@ export function formatRecipeAsShareText(
     }
   });
 
+  if (hasPreparation(recipe.preparation)) {
+    lines.push("");
+    lines.push("Preparacion:");
+    recipe.preparation?.steps.forEach((step, index) => {
+      lines.push(`${index + 1}. ${step}`);
+    });
+  }
+
+  if (hasFermentation(recipe.fermentation)) {
+    lines.push("");
+    lines.push("Fermentacion:");
+    const summary = formatFermentationSummary(recipe.fermentation);
+    if (summary) {
+      lines.push(summary);
+    }
+    if (recipe.fermentation?.instructions) {
+      lines.push(recipe.fermentation.instructions);
+    }
+    if (recipe.fermentation?.visualCue) {
+      lines.push(recipe.fermentation.visualCue);
+    }
+  }
+
+  if (hasBaking(recipe.baking)) {
+    lines.push("");
+    lines.push("Horneado:");
+    const summary = formatBakingSummary(recipe.baking);
+    if (summary) {
+      lines.push(summary);
+    }
+    if (recipe.baking?.instructions) {
+      lines.push(recipe.baking.instructions);
+    }
+  }
+
   if (recipe.notes?.trim()) {
     lines.push("");
     lines.push("Notas:");
-    lines.push(recipe.notes.trim());
+    lines.push(richTextToPlainText(recipe.notes));
   }
 
   lines.push("");

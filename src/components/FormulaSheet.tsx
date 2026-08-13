@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Alert,
   Keyboard,
@@ -17,6 +17,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HydrationBar } from "@/components/HydrationBar";
 import { IngredientRow } from "@/components/IngredientRow";
+import { RichTextContent } from "@/components/RichTextContent";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import { setClipboardText } from "@/lib/clipboard";
 import {
   applyScalingTarget,
@@ -41,20 +43,37 @@ import {
   getTotalLiquids,
   parseDecimalInput
 } from "@/lib/baker";
+import {
+  cloneRecipeMetadata,
+  formatBakingSummary,
+  formatFermentationSummary,
+  formatYieldSummary
+} from "@/lib/recipeFields";
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { shareCentenoRecipeFile } from "@/lib/recipeFileShare";
 import { exportRecipeToJson } from "@/lib/recipeImportExport";
 import { canMoveIngredient, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
+import {
+  getDefaultRecipeViewTab,
+  getRecipeCategoryIcon,
+  getNotesTabSections,
+  getPreparationTabSections,
+  getRecipeTabSections,
+  type RecipeViewTab
+} from "@/lib/recipeView";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
 import type {
   IngredientRole,
   IngredientUnit,
   Recipe,
+  RecipeBaking,
   RecipeDraft,
+  RecipeFermentation,
   RecipeIngredient,
-  RecipeScalingTarget
+  RecipeScalingTarget,
+  RecipeYield
 } from "@/types/recipe";
 
 type ScaleMode = "flour" | "dough" | "yield";
@@ -62,6 +81,7 @@ type PrefermentMode = "grams" | "percent";
 type IngredientField = "quantity" | "percentage" | null;
 type ExportMode = "selector" | "shareText" | "centenoFile" | "importCode" | null;
 type PrefermentContextKind = "flour" | "water";
+type PreparationEditorKind = "preparation" | "fermentation" | "baking" | "yield" | "notes";
 
 const roles: IngredientRole[] = [
   "flour",
@@ -137,10 +157,12 @@ function toDraftIngredient(ingredient: RecipeIngredient): IngredientDraftState {
 }
 
 function getRecipeDraft(recipe: Recipe, ingredients: RecipeIngredient[], notes?: string): RecipeDraft {
+  const metadata = cloneRecipeMetadata(recipe);
+
   return {
     name: recipe.name,
-    description: recipe.description ?? "",
-    notes: notes ?? recipe.notes ?? "",
+    ...metadata,
+    notes: notes ?? metadata.notes,
     category: recipe.category ?? "bakery",
     useAsPreferment: recipe.useAsPreferment ?? false,
     scalingTarget: recipe.scalingTarget,
@@ -149,22 +171,64 @@ function getRecipeDraft(recipe: Recipe, ingredients: RecipeIngredient[], notes?:
   };
 }
 
+function formatNumberInput(value?: number) {
+  if (value === undefined || value === null || Number.isNaN(value)) {
+    return "";
+  }
+
+  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function parseOptionalNumber(value: string) {
+  if (!value.trim()) {
+    return undefined;
+  }
+
+  const normalized = Number(value.replace(",", "."));
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : undefined;
+}
+
 export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const insets = useSafeAreaInsets();
   const { recipes, clearScalingTarget, createRecipe, deleteRecipe, updateRecipe } = useRecipes();
   const [menuVisible, setMenuVisible] = useState(false);
   const [scaleVisible, setScaleVisible] = useState(false);
-  const [notesVisible, setNotesVisible] = useState(false);
   const [exportMode, setExportMode] = useState<ExportMode>(null);
   const [exportJson, setExportJson] = useState("");
   const [shareText, setShareText] = useState("");
   const [copyFeedback, setCopyFeedback] = useState<"shareText" | "importCode" | null>(null);
   const [ingredientVisible, setIngredientVisible] = useState(false);
   const [prefermentVisible, setPrefermentVisible] = useState(false);
+  const [editorVisible, setEditorVisible] = useState<PreparationEditorKind | null>(null);
   const [editingIngredientId, setEditingIngredientId] = useState<string | null>(null);
   const [ingredientDraft, setIngredientDraft] = useState<IngredientDraftState>(emptyIngredient());
   const [lastEditedField, setLastEditedField] = useState<IngredientField>(null);
+  const [activeTab, setActiveTab] = useState<RecipeViewTab>(getDefaultRecipeViewTab());
   const [notesDraft, setNotesDraft] = useState(recipe.notes ?? "");
+  const [preparationDraft, setPreparationDraft] = useState<string[]>(
+    recipe.preparation?.steps.length ? [...recipe.preparation.steps] : [""]
+  );
+  const [fermentationDraft, setFermentationDraft] = useState({
+    instructions: recipe.fermentation?.instructions ?? "",
+    visualCue: recipe.fermentation?.visualCue ?? "",
+    timeMinMinutes: formatNumberInput(recipe.fermentation?.timeMinMinutes),
+    timeMaxMinutes: formatNumberInput(recipe.fermentation?.timeMaxMinutes),
+    temperatureMinC: formatNumberInput(recipe.fermentation?.temperatureMinC),
+    temperatureMaxC: formatNumberInput(recipe.fermentation?.temperatureMaxC)
+  });
+  const [bakingDraft, setBakingDraft] = useState({
+    instructions: recipe.baking?.instructions ?? "",
+    timeMinMinutes: formatNumberInput(recipe.baking?.timeMinMinutes),
+    timeMaxMinutes: formatNumberInput(recipe.baking?.timeMaxMinutes),
+    temperatureMinC: formatNumberInput(recipe.baking?.temperatureMinC),
+    temperatureMaxC: formatNumberInput(recipe.baking?.temperatureMaxC)
+  });
+  const [yieldDraft, setYieldDraft] = useState({
+    quantity: formatNumberInput(recipe.yield?.quantity),
+    unit: recipe.yield?.unit ?? "",
+    weightPerUnit: formatNumberInput(recipe.yield?.weightPerUnit),
+    weightUnit: recipe.yield?.weightUnit ?? "g"
+  });
   const [mode, setMode] = useState<ScaleMode>(
     recipe.scalingTarget?.mode === "doughWeight"
       ? "dough"
@@ -226,6 +290,10 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     };
   }, [lookupRecipe, recipe.id, recipe.ingredients]);
   const activeScalingLabel = buildScalingTargetLabel(recipe.scalingTarget);
+  const activeTabIcon = getRecipeCategoryIcon(recipe.category);
+  const recipeTabSections = getRecipeTabSections(recipe);
+  const preparationTabSections = getPreparationTabSections(recipe);
+  const notesTabSections = getNotesTabSections(recipe);
   const prefermentCount = useMemo(
     () => recipe.ingredients.filter((ingredient) => ingredient.role === "preferment").length,
     [recipe.ingredients]
@@ -285,6 +353,36 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       }));
   }, [lookupRecipe, recipe.id, recipe.ingredients]);
 
+  useEffect(() => {
+    setActiveTab(getDefaultRecipeViewTab());
+  }, [recipe.id]);
+
+  useEffect(() => {
+    setNotesDraft(recipe.notes ?? "");
+    setPreparationDraft(recipe.preparation?.steps.length ? [...recipe.preparation.steps] : [""]);
+    setFermentationDraft({
+      instructions: recipe.fermentation?.instructions ?? "",
+      visualCue: recipe.fermentation?.visualCue ?? "",
+      timeMinMinutes: formatNumberInput(recipe.fermentation?.timeMinMinutes),
+      timeMaxMinutes: formatNumberInput(recipe.fermentation?.timeMaxMinutes),
+      temperatureMinC: formatNumberInput(recipe.fermentation?.temperatureMinC),
+      temperatureMaxC: formatNumberInput(recipe.fermentation?.temperatureMaxC)
+    });
+    setBakingDraft({
+      instructions: recipe.baking?.instructions ?? "",
+      timeMinMinutes: formatNumberInput(recipe.baking?.timeMinMinutes),
+      timeMaxMinutes: formatNumberInput(recipe.baking?.timeMaxMinutes),
+      temperatureMinC: formatNumberInput(recipe.baking?.temperatureMinC),
+      temperatureMaxC: formatNumberInput(recipe.baking?.temperatureMaxC)
+    });
+    setYieldDraft({
+      quantity: formatNumberInput(recipe.yield?.quantity),
+      unit: recipe.yield?.unit ?? "",
+      weightPerUnit: formatNumberInput(recipe.yield?.weightPerUnit),
+      weightUnit: recipe.yield?.weightUnit ?? "g"
+    });
+  }, [recipe]);
+
   function syncScaleInputs(nextIngredients: RecipeIngredient[]) {
     setFlourTargetInput(formatDecimalInput(getTotalFlour(nextIngredients)));
     setDoughTargetInput(formatDecimalInput(getDoughWeight(nextIngredients, lookupRecipe, recipe.id)));
@@ -306,6 +404,13 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       scalingSnapshotIngredients: nextScalingSnapshotIngredients ?? undefined
     });
     syncScaleInputs(nextIngredients);
+  }
+
+  function updateRecipeEditorialFields(nextFields: Partial<RecipeDraft>) {
+    updateRecipe(recipe.id, {
+      ...getRecipeDraft(recipe, recipe.ingredients),
+      ...nextFields
+    });
   }
 
   function openAddIngredient(role: IngredientRole = "other") {
@@ -504,10 +609,11 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   }
 
   function duplicateRecipe() {
+    const metadata = cloneRecipeMetadata(recipe);
+
     const duplicatedId = createRecipe({
       name: `${recipe.name} copia`,
-      description: recipe.description ?? "",
-      notes: recipe.notes ?? "",
+      ...metadata,
       category: recipe.category ?? "bakery",
       useAsPreferment: recipe.useAsPreferment ?? false,
       scalingTarget: recipe.scalingTarget,
@@ -525,17 +631,192 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     router.replace(`/recipes/${duplicatedId}`);
   }
 
-  function openNotesModal() {
-    setNotesDraft(recipe.notes ?? "");
-    setNotesVisible(true);
-  }
-
   function openExportModal() {
     setExportJson(exportRecipeToJson(recipe));
     setShareText(formatRecipeAsShareText(recipe, recipes));
     setCopyFeedback(null);
     setExportMode("selector");
     setMenuVisible(false);
+  }
+
+  function openEditorialEditor(kind: PreparationEditorKind) {
+    if (kind === "preparation") {
+      setPreparationDraft(recipe.preparation?.steps.length ? [...recipe.preparation.steps] : [""]);
+    }
+
+    if (kind === "fermentation") {
+      setFermentationDraft({
+        instructions: recipe.fermentation?.instructions ?? "",
+        visualCue: recipe.fermentation?.visualCue ?? "",
+        timeMinMinutes: formatNumberInput(recipe.fermentation?.timeMinMinutes),
+        timeMaxMinutes: formatNumberInput(recipe.fermentation?.timeMaxMinutes),
+        temperatureMinC: formatNumberInput(recipe.fermentation?.temperatureMinC),
+        temperatureMaxC: formatNumberInput(recipe.fermentation?.temperatureMaxC)
+      });
+    }
+
+    if (kind === "baking") {
+      setBakingDraft({
+        instructions: recipe.baking?.instructions ?? "",
+        timeMinMinutes: formatNumberInput(recipe.baking?.timeMinMinutes),
+        timeMaxMinutes: formatNumberInput(recipe.baking?.timeMaxMinutes),
+        temperatureMinC: formatNumberInput(recipe.baking?.temperatureMinC),
+        temperatureMaxC: formatNumberInput(recipe.baking?.temperatureMaxC)
+      });
+    }
+
+    if (kind === "yield") {
+      setYieldDraft({
+        quantity: formatNumberInput(recipe.yield?.quantity),
+        unit: recipe.yield?.unit ?? "",
+        weightPerUnit: formatNumberInput(recipe.yield?.weightPerUnit),
+        weightUnit: recipe.yield?.weightUnit ?? "g"
+      });
+    }
+
+    if (kind === "notes") {
+      setNotesDraft(recipe.notes ?? "");
+    }
+
+    setEditorVisible(kind);
+  }
+
+  function closeEditorialEditor() {
+    Keyboard.dismiss();
+    setEditorVisible(null);
+  }
+
+  function savePreparationDraft() {
+    const steps = preparationDraft.map((step) => step.trim()).filter(Boolean);
+    updateRecipeEditorialFields({
+      preparation: steps.length ? { steps } : undefined
+    });
+    closeEditorialEditor();
+  }
+
+  function saveFermentationDraft() {
+    const nextFermentation: RecipeFermentation | undefined =
+      fermentationDraft.instructions.trim() ||
+      fermentationDraft.visualCue.trim() ||
+      parseOptionalNumber(fermentationDraft.timeMinMinutes) ||
+      parseOptionalNumber(fermentationDraft.timeMaxMinutes) ||
+      parseOptionalNumber(fermentationDraft.temperatureMinC) ||
+      parseOptionalNumber(fermentationDraft.temperatureMaxC)
+        ? {
+            instructions: fermentationDraft.instructions,
+            visualCue: fermentationDraft.visualCue,
+            timeMinMinutes: parseOptionalNumber(fermentationDraft.timeMinMinutes),
+            timeMaxMinutes: parseOptionalNumber(fermentationDraft.timeMaxMinutes),
+            temperatureMinC: parseOptionalNumber(fermentationDraft.temperatureMinC),
+            temperatureMaxC: parseOptionalNumber(fermentationDraft.temperatureMaxC)
+          }
+        : undefined;
+
+    updateRecipeEditorialFields({
+      fermentation: nextFermentation
+    });
+    closeEditorialEditor();
+  }
+
+  function saveBakingDraft() {
+    const nextBaking: RecipeBaking | undefined =
+      bakingDraft.instructions.trim() ||
+      parseOptionalNumber(bakingDraft.timeMinMinutes) ||
+      parseOptionalNumber(bakingDraft.timeMaxMinutes) ||
+      parseOptionalNumber(bakingDraft.temperatureMinC) ||
+      parseOptionalNumber(bakingDraft.temperatureMaxC)
+        ? {
+            instructions: bakingDraft.instructions,
+            timeMinMinutes: parseOptionalNumber(bakingDraft.timeMinMinutes),
+            timeMaxMinutes: parseOptionalNumber(bakingDraft.timeMaxMinutes),
+            temperatureMinC: parseOptionalNumber(bakingDraft.temperatureMinC),
+            temperatureMaxC: parseOptionalNumber(bakingDraft.temperatureMaxC)
+          }
+        : undefined;
+
+    updateRecipeEditorialFields({
+      baking: nextBaking
+    });
+    closeEditorialEditor();
+  }
+
+  function saveYieldDraft() {
+    const nextYield: RecipeYield | undefined =
+      parseOptionalNumber(yieldDraft.quantity) ||
+      yieldDraft.unit.trim() ||
+      parseOptionalNumber(yieldDraft.weightPerUnit)
+        ? {
+            quantity: parseOptionalNumber(yieldDraft.quantity),
+            unit: yieldDraft.unit,
+            weightPerUnit: parseOptionalNumber(yieldDraft.weightPerUnit),
+            weightUnit: parseOptionalNumber(yieldDraft.weightPerUnit)
+              ? (yieldDraft.weightUnit as RecipeYield["weightUnit"])
+              : undefined
+          }
+        : undefined;
+
+    updateRecipeEditorialFields({
+      yield: nextYield
+    });
+    closeEditorialEditor();
+  }
+
+  function saveNotesDraft() {
+    updateRecipeEditorialFields({
+      notes: notesDraft
+    });
+    closeEditorialEditor();
+  }
+
+  function requestCloseEditorialEditor() {
+    const preparationDirty =
+      JSON.stringify(preparationDraft) !== JSON.stringify(recipe.preparation?.steps ?? [""]);
+    const fermentationDirty =
+      fermentationDraft.instructions !== (recipe.fermentation?.instructions ?? "") ||
+      fermentationDraft.visualCue !== (recipe.fermentation?.visualCue ?? "") ||
+      fermentationDraft.timeMinMinutes !== formatNumberInput(recipe.fermentation?.timeMinMinutes) ||
+      fermentationDraft.timeMaxMinutes !== formatNumberInput(recipe.fermentation?.timeMaxMinutes) ||
+      fermentationDraft.temperatureMinC !==
+        formatNumberInput(recipe.fermentation?.temperatureMinC) ||
+      fermentationDraft.temperatureMaxC !==
+        formatNumberInput(recipe.fermentation?.temperatureMaxC);
+    const bakingDirty =
+      bakingDraft.instructions !== (recipe.baking?.instructions ?? "") ||
+      bakingDraft.timeMinMinutes !== formatNumberInput(recipe.baking?.timeMinMinutes) ||
+      bakingDraft.timeMaxMinutes !== formatNumberInput(recipe.baking?.timeMaxMinutes) ||
+      bakingDraft.temperatureMinC !== formatNumberInput(recipe.baking?.temperatureMinC) ||
+      bakingDraft.temperatureMaxC !== formatNumberInput(recipe.baking?.temperatureMaxC);
+    const yieldDirty =
+      yieldDraft.quantity !== formatNumberInput(recipe.yield?.quantity) ||
+      yieldDraft.unit !== (recipe.yield?.unit ?? "") ||
+      yieldDraft.weightPerUnit !== formatNumberInput(recipe.yield?.weightPerUnit) ||
+      yieldDraft.weightUnit !== (recipe.yield?.weightUnit ?? "g");
+    const notesDirty = notesDraft !== (recipe.notes ?? "");
+
+    const dirty =
+      (editorVisible === "preparation" && preparationDirty) ||
+      (editorVisible === "fermentation" && fermentationDirty) ||
+      (editorVisible === "baking" && bakingDirty) ||
+      (editorVisible === "yield" && yieldDirty) ||
+      (editorVisible === "notes" && notesDirty);
+
+    if (!dirty) {
+      closeEditorialEditor();
+      return;
+    }
+
+    Alert.alert(
+      "Descartar cambios",
+      "Hay cambios sin guardar en esta seccion.",
+      [
+        { text: "Seguir editando", style: "cancel" },
+        {
+          text: "Descartar",
+          style: "destructive",
+          onPress: closeEditorialEditor
+        }
+      ]
+    );
   }
 
   async function handleCopyExport(value: string, modeValue: "shareText" | "importCode") {
@@ -564,12 +845,6 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
 
       Alert.alert("No se pudo crear el archivo de la receta.");
     }
-  }
-
-  function saveNotes() {
-    updateRecipeIngredients(recipe.ingredients, notesDraft);
-    Keyboard.dismiss();
-    setNotesVisible(false);
   }
 
   function applyAdjustment() {
@@ -706,8 +981,8 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               <Text style={styles.iconText}>+</Text>
             </Pressable>
             <Pressable
-              accessibilityLabel="Notas de receta"
-              onPress={openNotesModal}
+              accessibilityLabel="Editar receta"
+              onPress={() => router.push(`/recipes/form?id=${recipe.id}`)}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             >
               <Text style={styles.editIcon}>{"\u270E"}</Text>
@@ -728,51 +1003,172 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         <CompactMetric label="Masa" value={`${summary.doughWeight} g`} />
         <CompactMetric label="Prefermento" value={summary.preferment} />
       </View>
+      <View style={styles.tabRow}>
+        <RecipeTabButton
+          active={activeTab === "recipe"}
+          icon={activeTab === "recipe" ? activeTabIcon : null}
+          label="Receta"
+          onPress={() => setActiveTab("recipe")}
+        />
+        <RecipeTabButton
+          active={activeTab === "preparation"}
+          icon={activeTab === "preparation" ? activeTabIcon : null}
+          label="Preparacion"
+          onPress={() => setActiveTab("preparation")}
+        />
+        <RecipeTabButton
+          active={activeTab === "notes"}
+          icon={activeTab === "notes" ? activeTabIcon : null}
+          label="Notas"
+          onPress={() => setActiveTab("notes")}
+        />
+      </View>
 
-      <HydrationBar hydration={summary.hydration} />
-      {activeScalingLabel ? (
-        <View style={styles.activeTargetRow}>
-          <View style={styles.activeTargetChip}>
-            <Text style={styles.activeTargetText}>{activeScalingLabel}</Text>
-          </View>
-          <Pressable
-            accessibilityLabel="Explicar ajuste activo"
-            onPress={() => setScalingHelpVisible(true)}
-            style={({ pressed }) => [styles.helpChip, pressed && styles.chipPressed]}
-          >
-            <Text style={styles.helpChipText}>?</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      <View style={styles.ingredientsList}>
-        {recipe.ingredients.map((ingredient) => {
-          const displayBreakdown = getIngredientDisplayBreakdown(
-            ingredient,
-            recipe.ingredients,
-            (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
-            recipe.id
-          );
-
-          return (
-            <IngredientRow
-              ingredient={ingredient}
-              key={ingredient.id}
-              onBreakdownHelpPress={
-                displayBreakdown.detail ? () => setPrefermentHelpVisible(true) : undefined
-              }
-              onPress={() => openEditIngredient(ingredient.id)}
-              prefermentBreakdown={getPrefermentBreakdown(
+      {activeTab === "recipe" ? (
+        <>
+          <HydrationBar hydration={summary.hydration} />
+          {activeScalingLabel ? (
+            <View style={styles.activeTargetRow}>
+              <View style={styles.activeTargetChip}>
+                <Text style={styles.activeTargetText}>{activeScalingLabel}</Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Explicar ajuste activo"
+                onPress={() => setScalingHelpVisible(true)}
+                style={({ pressed }) => [styles.helpChip, pressed && styles.chipPressed]}
+              >
+                <Text style={styles.helpChipText}>?</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          <View style={styles.ingredientsList}>
+            {recipe.ingredients.map((ingredient) => {
+              const displayBreakdown = getIngredientDisplayBreakdown(
                 ingredient,
+                recipe.ingredients,
                 (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
                 recipe.id
-              )}
-              quantityDetail={displayBreakdown.detail}
-              quantityOverride={displayBreakdown.visibleQuantity}
-              quantityWarning={displayBreakdown.warning}
-            />
-          );
-        })}
-      </View>
+              );
+
+              return (
+                <IngredientRow
+                  ingredient={ingredient}
+                  key={ingredient.id}
+                  onBreakdownHelpPress={
+                    displayBreakdown.detail ? () => setPrefermentHelpVisible(true) : undefined
+                  }
+                  onPress={() => openEditIngredient(ingredient.id)}
+                  prefermentBreakdown={getPrefermentBreakdown(
+                    ingredient,
+                    (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
+                    recipe.id
+                  )}
+                  quantityDetail={displayBreakdown.detail}
+                  quantityOverride={displayBreakdown.visibleQuantity}
+                  quantityWarning={displayBreakdown.warning}
+                />
+              );
+            })}
+          </View>
+          {recipeTabSections.description ? (
+            <View style={styles.detailSection}>
+              <Text style={styles.detailSectionTitle}>Descripcion</Text>
+              <Text style={styles.detailSectionText}>{recipe.description?.trim()}</Text>
+            </View>
+          ) : null}
+        </>
+      ) : null}
+
+      {activeTab === "preparation" ? (
+        <View style={styles.tabContent}>
+          <EditorialSection
+            actionLabel={preparationTabSections.preparation ? "Editar" : "Agregar"}
+            onPress={() => openEditorialEditor("preparation")}
+            title="Preparacion"
+          >
+            {preparationTabSections.preparation ? (
+              <View style={styles.detailSteps}>
+                {recipe.preparation?.steps.map((step, index) => (
+                  <View key={`preparation-${index}`} style={styles.detailStepRow}>
+                    <Text style={styles.detailStepIndex}>{`${index + 1}.`}</Text>
+                    <Text style={styles.detailSectionText}>{step}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyTabText}>Todavia no agregaste pasos de preparacion.</Text>
+            )}
+          </EditorialSection>
+          <EditorialSection
+            actionLabel={preparationTabSections.fermentation ? "Editar" : "Agregar"}
+            onPress={() => openEditorialEditor("fermentation")}
+            title="Fermentacion"
+          >
+            {preparationTabSections.fermentation ? (
+              <>
+                {formatFermentationSummary(recipe.fermentation) ? (
+                  <Text style={styles.detailSectionMeta}>{formatFermentationSummary(recipe.fermentation)}</Text>
+                ) : null}
+                {recipe.fermentation?.instructions ? (
+                  <Text style={styles.detailSectionText}>{recipe.fermentation.instructions}</Text>
+                ) : null}
+                {recipe.fermentation?.visualCue ? (
+                  <Text style={styles.detailSectionText}>{recipe.fermentation.visualCue}</Text>
+                ) : null}
+              </>
+            ) : (
+              <Text style={styles.emptyTabText}>Todavia no agregaste datos de fermentacion.</Text>
+            )}
+          </EditorialSection>
+          <EditorialSection
+            actionLabel={preparationTabSections.baking ? "Editar" : "Agregar"}
+            onPress={() => openEditorialEditor("baking")}
+            title="Horneado"
+          >
+            {preparationTabSections.baking ? (
+              <>
+                {formatBakingSummary(recipe.baking) ? (
+                  <Text style={styles.detailSectionMeta}>{formatBakingSummary(recipe.baking)}</Text>
+                ) : null}
+                {recipe.baking?.instructions ? (
+                  <Text style={styles.detailSectionText}>{recipe.baking.instructions}</Text>
+                ) : null}
+              </>
+            ) : (
+              <Text style={styles.emptyTabText}>Todavia no agregaste datos de horneado.</Text>
+            )}
+          </EditorialSection>
+          <EditorialSection
+            actionLabel={recipe.yield ? "Editar" : "Agregar"}
+            onPress={() => openEditorialEditor("yield")}
+            title="Rendimiento"
+          >
+            {recipe.yield ? (
+              <Text style={styles.detailSectionMeta}>{formatYieldSummary(recipe.yield)}</Text>
+            ) : (
+              <Text style={styles.emptyTabText}>Todavia no agregaste datos de rendimiento.</Text>
+            )}
+          </EditorialSection>
+        </View>
+      ) : null}
+
+      {activeTab === "notes" ? (
+        <View style={styles.tabContent}>
+          <EditorialSection
+            actionLabel={notesTabSections.notes ? "Editar" : "Agregar nota"}
+            onPress={() => openEditorialEditor("notes")}
+            title="Notas"
+          >
+            {notesTabSections.notes ? (
+              <RichTextContent value={recipe.notes} />
+            ) : (
+              <Text style={styles.emptyTabText}>
+                Agrega tips, sustituciones o cualquier detalle adicional de la receta.
+              </Text>
+            )}
+          </EditorialSection>
+        </View>
+      ) : null}
 
       <Modal
         animationType="fade"
@@ -898,38 +1294,346 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
 
       <Modal
         animationType="fade"
-        onRequestClose={() => setNotesVisible(false)}
+        onRequestClose={requestCloseEditorialEditor}
         transparent
-        visible={notesVisible}
+        visible={editorVisible !== null}
       >
-        <CenteredModalSheet>
-          <Text style={styles.sheetTitle}>Notas</Text>
-          <TextInput
-            multiline
-            onChangeText={setNotesDraft}
-            placeholder="Notas de trabajo"
-            placeholderTextColor={theme.colors.textMuted}
-            style={[styles.field, styles.notesField]}
-            textAlignVertical="top"
-            value={notesDraft}
-          />
-          <View style={styles.sheetActions}>
-            <Pressable
-              onPress={() => {
-                Keyboard.dismiss();
-                setNotesVisible(false);
-              }}
-              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-            >
-              <Text style={styles.textActionLabel}>Cancelar</Text>
-            </Pressable>
-            <Pressable
-              onPress={saveNotes}
-              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
-            >
-              <Text style={styles.primaryActionLabel}>Guardar</Text>
-            </Pressable>
-          </View>
+        <CenteredModalSheet onBackdropPress={requestCloseEditorialEditor}>
+          {editorVisible === "preparation" ? (
+            <>
+              <Text style={styles.sheetTitle}>Preparacion</Text>
+              <Text style={styles.helperText}>Carga los pasos en el orden de trabajo.</Text>
+              {preparationDraft.map((step, index) => (
+                <View key={`editor-step-${index}`} style={styles.editorCard}>
+                  <View style={styles.editorCardHeader}>
+                    <Text style={styles.editorCardTitle}>{`Paso ${index + 1}`}</Text>
+                    <View style={styles.editorRowActions}>
+                      <SmallEditorAction
+                        disabled={index === 0}
+                        label="↑"
+                        onPress={() =>
+                          setPreparationDraft((current) => moveListItem(current, index, "up"))
+                        }
+                      />
+                      <SmallEditorAction
+                        disabled={index === preparationDraft.length - 1}
+                        label="↓"
+                        onPress={() =>
+                          setPreparationDraft((current) => moveListItem(current, index, "down"))
+                        }
+                      />
+                      <SmallEditorAction
+                        label="Eliminar"
+                        onPress={() =>
+                          setPreparationDraft((current) => {
+                            const next = current.filter((_, currentIndex) => currentIndex !== index);
+                            return next.length ? next : [""];
+                          })
+                        }
+                      />
+                    </View>
+                  </View>
+                  <TextInput
+                    multiline
+                    onChangeText={(value) =>
+                      setPreparationDraft((current) =>
+                        current.map((stepValue, currentIndex) =>
+                          currentIndex === index ? value : stepValue
+                        )
+                      )
+                    }
+                    placeholder="Describe este paso"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={[styles.field, styles.notesField]}
+                    textAlignVertical="top"
+                    value={step}
+                  />
+                </View>
+              ))}
+              <View style={styles.copyActionRow}>
+                <Pressable
+                  onPress={() => setPreparationDraft((current) => [...current, ""])}
+                  style={({ pressed }) => [styles.secondaryAction, pressed && styles.secondaryActionPressed]}
+                >
+                  <Text style={styles.secondaryActionLabel}>Agregar paso</Text>
+                </Pressable>
+              </View>
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={requestCloseEditorialEditor}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={savePreparationDraft}
+                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                >
+                  <Text style={styles.primaryActionLabel}>Guardar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+
+          {editorVisible === "fermentation" ? (
+            <>
+              <Text style={styles.sheetTitle}>Fermentacion</Text>
+              <FieldLabel label="Indicaciones" />
+              <TextInput
+                multiline
+                onChangeText={(value) =>
+                  setFermentationDraft((current) => ({ ...current, instructions: value }))
+                }
+                placeholder="Indicaciones generales de fermentacion"
+                placeholderTextColor={theme.colors.textMuted}
+                style={[styles.field, styles.notesField]}
+                textAlignVertical="top"
+                value={fermentationDraft.instructions}
+              />
+              <FieldLabel label="Criterio visual" />
+              <TextInput
+                multiline
+                onChangeText={(value) =>
+                  setFermentationDraft((current) => ({ ...current, visualCue: value }))
+                }
+                placeholder="Hasta observar..."
+                placeholderTextColor={theme.colors.textMuted}
+                style={[styles.field, styles.notesField]}
+                textAlignVertical="top"
+                value={fermentationDraft.visualCue}
+              />
+              <View style={styles.inlineFields}>
+                <View style={styles.flex}>
+                  <FieldLabel label="Tiempo minimo" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setFermentationDraft((current) => ({ ...current, timeMinMinutes: value }))
+                    }
+                    placeholder="60"
+                    suffix="min"
+                    value={fermentationDraft.timeMinMinutes}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <FieldLabel label="Tiempo maximo" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setFermentationDraft((current) => ({ ...current, timeMaxMinutes: value }))
+                    }
+                    placeholder="90"
+                    suffix="min"
+                    value={fermentationDraft.timeMaxMinutes}
+                  />
+                </View>
+              </View>
+              <View style={styles.inlineFields}>
+                <View style={styles.flex}>
+                  <FieldLabel label="Temperatura minima" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setFermentationDraft((current) => ({ ...current, temperatureMinC: value }))
+                    }
+                    placeholder="24"
+                    suffix="°C"
+                    value={fermentationDraft.temperatureMinC}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <FieldLabel label="Temperatura maxima" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setFermentationDraft((current) => ({ ...current, temperatureMaxC: value }))
+                    }
+                    placeholder="26"
+                    suffix="°C"
+                    value={fermentationDraft.temperatureMaxC}
+                  />
+                </View>
+              </View>
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={requestCloseEditorialEditor}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={saveFermentationDraft}
+                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                >
+                  <Text style={styles.primaryActionLabel}>Guardar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+
+          {editorVisible === "baking" ? (
+            <>
+              <Text style={styles.sheetTitle}>Horneado</Text>
+              <View style={styles.inlineFields}>
+                <View style={styles.flex}>
+                  <FieldLabel label="Temperatura minima" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setBakingDraft((current) => ({ ...current, temperatureMinC: value }))
+                    }
+                    placeholder="220"
+                    suffix="°C"
+                    value={bakingDraft.temperatureMinC}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <FieldLabel label="Temperatura maxima" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setBakingDraft((current) => ({ ...current, temperatureMaxC: value }))
+                    }
+                    placeholder="240"
+                    suffix="°C"
+                    value={bakingDraft.temperatureMaxC}
+                  />
+                </View>
+              </View>
+              <View style={styles.inlineFields}>
+                <View style={styles.flex}>
+                  <FieldLabel label="Tiempo minimo" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setBakingDraft((current) => ({ ...current, timeMinMinutes: value }))
+                    }
+                    placeholder="20"
+                    suffix="min"
+                    value={bakingDraft.timeMinMinutes}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <FieldLabel label="Tiempo maximo" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setBakingDraft((current) => ({ ...current, timeMaxMinutes: value }))
+                    }
+                    placeholder="30"
+                    suffix="min"
+                    value={bakingDraft.timeMaxMinutes}
+                  />
+                </View>
+              </View>
+              <FieldLabel label="Indicaciones" />
+              <TextInput
+                multiline
+                onChangeText={(value) =>
+                  setBakingDraft((current) => ({ ...current, instructions: value }))
+                }
+                placeholder="Hornear hasta obtener..."
+                placeholderTextColor={theme.colors.textMuted}
+                style={[styles.field, styles.notesField]}
+                textAlignVertical="top"
+                value={bakingDraft.instructions}
+              />
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={requestCloseEditorialEditor}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={saveBakingDraft}
+                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                >
+                  <Text style={styles.primaryActionLabel}>Guardar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+
+          {editorVisible === "yield" ? (
+            <>
+              <Text style={styles.sheetTitle}>Rendimiento</Text>
+              <View style={styles.inlineFields}>
+                <View style={styles.flex}>
+                  <FieldLabel label="Cantidad" />
+                  <TextInput
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) => setYieldDraft((current) => ({ ...current, quantity: value }))}
+                    placeholder="3"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={styles.field}
+                    value={yieldDraft.quantity}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <FieldLabel label="Unidad" />
+                  <TextInput
+                    onChangeText={(value) => setYieldDraft((current) => ({ ...current, unit: value }))}
+                    placeholder="lactales"
+                    placeholderTextColor={theme.colors.textMuted}
+                    style={styles.field}
+                    value={yieldDraft.unit}
+                  />
+                </View>
+              </View>
+              <View style={styles.inlineFields}>
+                <View style={styles.flex}>
+                  <FieldLabel label="Peso por unidad" />
+                  <InputWithSuffix
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setYieldDraft((current) => ({ ...current, weightPerUnit: value }))
+                    }
+                    placeholder="1000"
+                    suffix={yieldDraft.weightUnit}
+                    value={yieldDraft.weightPerUnit}
+                  />
+                </View>
+                <View style={styles.flex}>
+                  <FieldLabel label="Unidad de peso" />
+                  <View style={styles.choiceRow}>
+                    {(["g", "kg"] as const).map((unit) => (
+                      <ChoiceButton
+                        active={yieldDraft.weightUnit === unit}
+                        key={unit}
+                        label={unit}
+                        onPress={() => setYieldDraft((current) => ({ ...current, weightUnit: unit }))}
+                      />
+                    ))}
+                  </View>
+                </View>
+              </View>
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={requestCloseEditorialEditor}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+                >
+                  <Text style={styles.textActionLabel}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={saveYieldDraft}
+                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                >
+                  <Text style={styles.primaryActionLabel}>Guardar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+
+          {editorVisible === "notes" ? (
+            <NotesEditorSheet
+              notesDraft={notesDraft}
+              onBackdropPress={requestCloseEditorialEditor}
+              onChangeText={setNotesDraft}
+              onClose={requestCloseEditorialEditor}
+              onSave={saveNotesDraft}
+            />
+          ) : null}
         </CenteredModalSheet>
       </Modal>
 
@@ -939,7 +1643,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={exportMode !== null}
       >
-        <CenteredModalSheet>
+        <CenteredModalSheet onBackdropPress={() => setExportMode(null)}>
           {exportMode === "selector" ? (
             <>
               <Text style={styles.sheetTitle}>Exportar receta</Text>
@@ -1112,7 +1816,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={scalingHelpVisible}
       >
-        <CenteredModalSheet>
+        <CenteredModalSheet onBackdropPress={() => setScalingHelpVisible(false)}>
           <Text style={styles.sheetTitle}>Ajuste activo</Text>
           <Text style={styles.notesText}>CENTENO puede mantener un objetivo de produccion activo.</Text>
           {recipe.scalingTarget?.mode === "pieces" ? (
@@ -1159,7 +1863,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={prefermentHelpVisible}
       >
-        <CenteredModalSheet>
+        <CenteredModalSheet onBackdropPress={() => setPrefermentHelpVisible(false)}>
           <Text style={styles.sheetTitle}>Aporte del prefermento</Text>
           <Text style={styles.notesText}>
             En esta receta, CENTENO mantiene los porcentajes de la formula total, pero descuenta la
@@ -1377,8 +2081,8 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={menuVisible}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.menuSheet}>
+        <Pressable onPress={() => setMenuVisible(false)} style={styles.modalBackdrop}>
+          <Pressable onPress={() => {}} style={styles.menuSheet}>
             <MenuAction
               label="Ajustar receta"
               onPress={() => {
@@ -1438,30 +2142,214 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             >
               <Text style={styles.textActionLabel}>Cerrar</Text>
             </Pressable>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
 }
 
-function CenteredModalSheet({ children }: { children: ReactNode }) {
+function CenteredModalSheet({
+  children,
+  onBackdropPress
+}: {
+  children: ReactNode;
+  onBackdropPress?: () => void;
+}) {
+  if (!onBackdropPress) {
+    return (
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", android: "height" })}
+        style={styles.centeredBackdrop}
+      >
+        <View style={styles.centeredSheet}>
+          <ScrollView
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.sheetContent}>{children}</View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.select({ ios: "padding", android: "height" })}
-      style={styles.centeredBackdrop}
-    >
-      <View style={styles.centeredSheet}>
-        <ScrollView
-          contentContainerStyle={styles.sheetScrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.sheetContent}>{children}</View>
-        </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
+    <Pressable onPress={onBackdropPress} style={styles.centeredBackdrop}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", android: "height" })}
+        pointerEvents="box-none"
+        style={styles.centeredBackdropContent}
+      >
+        <Pressable onPress={() => {}} style={styles.centeredSheet}>
+          <ScrollView
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.sheetContent}>{children}</View>
+          </ScrollView>
+        </Pressable>
+      </KeyboardAvoidingView>
+    </Pressable>
   );
+}
+
+function NotesEditorSheet({
+  notesDraft,
+  onBackdropPress,
+  onChangeText,
+  onClose,
+  onSave
+}: {
+  notesDraft: string;
+  onBackdropPress: () => void;
+  onChangeText: (value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <Pressable onPress={onBackdropPress} style={styles.centeredBackdrop}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", android: "height" })}
+        pointerEvents="box-none"
+        style={styles.centeredBackdropContent}
+      >
+        <Pressable onPress={() => {}} style={styles.notesEditorSheet}>
+          <View style={styles.notesEditorHeader}>
+            <Text style={styles.sheetTitle}>Notas</Text>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+            >
+              <Text style={styles.textActionLabel}>Cerrar</Text>
+            </Pressable>
+          </View>
+          <View style={styles.notesEditorBody}>
+            <RichTextEditor
+              containerStyle={styles.notesEditorContainer}
+              minHeight={320}
+              onChangeText={onChangeText}
+              placeholder="Agrega tips, variantes o aclaraciones"
+              value={notesDraft}
+            />
+          </View>
+          <View style={styles.notesEditorFooter}>
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
+            >
+              <Text style={styles.textActionLabel}>Cancelar</Text>
+            </Pressable>
+            <Pressable
+              onPress={onSave}
+              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+            >
+              <Text style={styles.primaryActionLabel}>Guardar</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </KeyboardAvoidingView>
+    </Pressable>
+  );
+}
+
+function RecipeTabButton({
+  active,
+  icon,
+  label,
+  onPress
+}: {
+  active: boolean;
+  icon: string | null;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.tabButton,
+        active && styles.tabButtonActive,
+        pressed && styles.chipPressed
+      ]}
+    >
+      <View style={styles.tabButtonInner}>
+        {icon ? <Text style={styles.tabButtonIcon}>{icon}</Text> : null}
+        <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>{label}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function EditorialSection({
+  actionLabel,
+  children,
+  onPress,
+  title
+}: {
+  actionLabel: string;
+  children: ReactNode;
+  onPress: () => void;
+  title: string;
+}) {
+  return (
+    <View style={styles.detailSection}>
+      <View style={styles.detailSectionHeader}>
+        <Text style={styles.detailSectionTitle}>{title}</Text>
+        <Pressable
+          accessibilityLabel={`${actionLabel} ${title}`}
+          onPress={onPress}
+          style={({ pressed }) => [styles.sectionAction, pressed && styles.chipPressed]}
+        >
+          <Text style={styles.sectionActionText}>{actionLabel}</Text>
+        </Pressable>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function SmallEditorAction({
+  disabled,
+  label,
+  onPress
+}: {
+  disabled?: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.smallEditorAction,
+        disabled && styles.smallEditorActionDisabled,
+        pressed && !disabled && styles.chipPressed
+      ]}
+    >
+      <Text style={[styles.smallEditorActionText, disabled && styles.smallEditorActionTextDisabled]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function moveListItem<T>(items: T[], index: number, direction: "up" | "down") {
+  const nextIndex = direction === "up" ? index - 1 : index + 1;
+
+  if (nextIndex < 0 || nextIndex >= items.length) {
+    return items;
+  }
+
+  const clone = [...items];
+  const [current] = clone.splice(index, 1);
+  clone.splice(nextIndex, 0, current);
+  return clone;
 }
 
 function CompactMetric({ label, value }: { label: string; value: string }) {
@@ -1697,6 +2585,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.sm,
     paddingVertical: 10
   },
+  tabRow: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 2
+  },
+  tabButton: {
+    alignItems: "center",
+    borderBottomWidth: 2,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 34,
+    paddingHorizontal: 8,
+    paddingVertical: 6
+  },
+  tabButtonInner: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 4,
+    justifyContent: "center"
+  },
+  tabButtonIcon: {
+    fontSize: 12
+  },
+  tabButtonActive: {
+    borderBottomColor: theme.colors.accentDeep
+  },
+  tabButtonText: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  tabButtonTextActive: {
+    color: theme.colors.accentDeep
+  },
+  tabContent: {
+    gap: theme.spacing.sm
+  },
+  emptyTabText: {
+    color: theme.colors.textSoft,
+    fontSize: 13,
+    lineHeight: 20
+  },
   metric: {
     flex: 1
   },
@@ -1768,6 +2698,107 @@ const styles = StyleSheet.create({
   ingredientsList: {
     gap: 0
   },
+  detailSection: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.md
+  },
+  detailSectionHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  detailSectionTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  sectionAction: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    minHeight: 28,
+    justifyContent: "center",
+    paddingHorizontal: 10
+  },
+  sectionActionText: {
+    color: theme.colors.accentDeep,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  detailSectionMeta: {
+    color: theme.colors.accentDeep,
+    fontSize: 13,
+    fontWeight: "700"
+  },
+  detailSectionText: {
+    color: theme.colors.text,
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 22
+  },
+  detailSteps: {
+    gap: 8
+  },
+  detailStepRow: {
+    flexDirection: "row",
+    gap: 8
+  },
+  detailStepIndex: {
+    color: theme.colors.accentDeep,
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 22,
+    minWidth: 18
+  },
+  editorCard: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    gap: theme.spacing.sm,
+    padding: theme.spacing.sm
+  },
+  editorCardHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  editorCardTitle: {
+    color: theme.colors.text,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  editorRowActions: {
+    flexDirection: "row",
+    gap: 6
+  },
+  smallEditorAction: {
+    alignItems: "center",
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 28,
+    minWidth: 28,
+    paddingHorizontal: 8
+  },
+  smallEditorActionDisabled: {
+    opacity: 0.45
+  },
+  smallEditorActionText: {
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  smallEditorActionTextDisabled: {
+    color: theme.colors.textSoft
+  },
   modalBackdrop: {
     backgroundColor: "rgba(47, 42, 38, 0.32)",
     flex: 1,
@@ -1779,6 +2810,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: theme.spacing.md
+  },
+  centeredBackdropContent: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    width: "100%"
   },
   centeredSheet: {
     backgroundColor: theme.colors.surface,
@@ -1794,6 +2831,41 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 20,
     width: "92%"
+  },
+  notesEditorSheet: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    elevation: 6,
+    height: "88%",
+    maxWidth: 560,
+    padding: theme.spacing.lg,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    width: "96%"
+  },
+  notesEditorHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: theme.spacing.xs
+  },
+  notesEditorBody: {
+    flex: 1,
+    paddingTop: theme.spacing.xs
+  },
+  notesEditorContainer: {
+    flex: 1
+  },
+  notesEditorFooter: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing.sm,
+    justifyContent: "flex-end",
+    paddingTop: theme.spacing.sm
   },
   sheetScrollContent: {
     flexGrow: 1

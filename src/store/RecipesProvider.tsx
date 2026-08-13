@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { sampleRecipes } from "@/data/sampleRecipes";
+import { normalizeRecipeMetadata } from "@/lib/recipeFields";
 import type {
   Recipe,
   RecipeCategory,
@@ -121,8 +122,11 @@ function normalizeScalingTarget(scalingTarget?: RecipeScalingTarget) {
 }
 
 function normalizeRecipe(recipe: Recipe): Recipe {
+  const metadata = normalizeRecipeMetadata(recipe);
+
   return {
     ...recipe,
+    ...metadata,
     category: normalizeCategory(recipe.category),
     scalingTarget: normalizeScalingTarget(recipe.scalingTarget),
     scalingSnapshotIngredients: recipe.scalingSnapshotIngredients?.map((ingredient) => ({
@@ -190,20 +194,23 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
       return {
         recipes: state.recipes.map((recipe) =>
           recipe.id === action.payload.id
-            ? {
-                ...recipe,
-                name: action.payload.draft.name.trim(),
-                description: action.payload.draft.description.trim(),
-                notes: action.payload.draft.notes.trim(),
-                category: normalizeCategory(action.payload.draft.category),
-                useAsPreferment: action.payload.draft.useAsPreferment,
-                scalingTarget: normalizeScalingTarget(action.payload.draft.scalingTarget),
-                scalingSnapshotIngredients: action.payload.draft.scalingSnapshotIngredients?.map(
-                  (ingredient) => ({ ...ingredient })
-                ),
-                ingredients: action.payload.draft.ingredients,
-                updatedAt: new Date().toISOString()
-              }
+            ? (() => {
+                const metadata = normalizeRecipeMetadata(action.payload.draft);
+
+                return {
+                  ...recipe,
+                  ...metadata,
+                  name: action.payload.draft.name.trim(),
+                  category: normalizeCategory(action.payload.draft.category),
+                  useAsPreferment: action.payload.draft.useAsPreferment,
+                  scalingTarget: normalizeScalingTarget(action.payload.draft.scalingTarget),
+                  scalingSnapshotIngredients: action.payload.draft.scalingSnapshotIngredients?.map(
+                    (ingredient) => ({ ...ingredient })
+                  ),
+                  ingredients: action.payload.draft.ingredients,
+                  updatedAt: new Date().toISOString()
+                };
+              })()
             : recipe
         )
       };
@@ -281,11 +288,11 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       isReady,
       createRecipe: (draft) => {
         const timestamp = new Date().toISOString();
+        const metadata = normalizeRecipeMetadata(draft);
         const recipe: Recipe = {
           id: makeId(),
           name: draft.name.trim(),
-          description: draft.description.trim(),
-          notes: draft.notes.trim(),
+          ...metadata,
           category: normalizeCategory(draft.category),
           useAsPreferment: draft.useAsPreferment,
           scalingTarget: normalizeScalingTarget(draft.scalingTarget),

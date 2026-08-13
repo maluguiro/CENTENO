@@ -37,6 +37,7 @@ import {
   parseImportedRecipe,
   prepareImportedRecipe
 } from "@/lib/recipeImportExport";
+import { cloneRecipeMetadata } from "@/lib/recipeFields";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { Screen } from "@/components/Screen";
 import { useRecipes } from "@/store/RecipesProvider";
@@ -360,8 +361,7 @@ export default function HomeScreen() {
 
     updateRecipe(quickRecipe.id, {
       name: quickRecipe.name,
-      description: quickRecipe.description ?? "",
-      notes: quickRecipe.notes ?? "",
+      ...cloneRecipeMetadata(quickRecipe),
       category: quickRecipe.category ?? "bakery",
       useAsPreferment: !quickRecipe.useAsPreferment,
       scalingTarget: quickRecipe.scalingTarget,
@@ -384,8 +384,7 @@ export default function HomeScreen() {
 
     createRecipe({
       name: buildDuplicateRecipeName(quickRecipe.name, recipes),
-      description: quickRecipe.description ?? "",
-      notes: quickRecipe.notes ?? "",
+      ...cloneRecipeMetadata(quickRecipe),
       category: quickRecipe.category ?? "bakery",
       useAsPreferment: quickRecipe.useAsPreferment ?? false,
       scalingTarget: quickRecipe.scalingTarget,
