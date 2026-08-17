@@ -16,7 +16,15 @@ export type GuideTargetRect = {
   height: number;
 };
 
-type GuidePreviewKind = "formula" | "editor" | "target" | "breakdown" | "export";
+type GuidePreviewKind =
+  | "formula"
+  | "editor"
+  | "target"
+  | "breakdown"
+  | "export"
+  | "recipe"
+  | "sections"
+  | "notes";
 
 type GuideStep = {
   title: string;
@@ -55,7 +63,7 @@ const guideSteps: GuideStep[] = [
     icon: "Filtro",
     title: "Panaderia y pasteleria",
     body:
-      "Usa el boton de cupcake para ver solo recetas de pasteleria. Toca el pan para volver a ver todas las recetas. Al crear o editar una receta podes marcar si es Panaderia o Pasteleria.",
+      "Usa el boton de cupcake para ver solo recetas de pasteleria. Toca el pan para volver a ver todas las recetas. Al crear o editar una receta podes marcar si es Panaderia o Pasteleria. El indicador 🍞 o 🧁 acompaña la seccion activa de la receta.",
     targetKey: "categoryFilter"
   },
   {
@@ -64,6 +72,27 @@ const guideSteps: GuideStep[] = [
     body:
       "Toca Nueva receta para crear una formula. Podes definir nombre, descripcion, tipo de receta y si queres que pueda usarse como prefermento.",
     targetKey: "newRecipeFab"
+  },
+  {
+    icon: "Receta",
+    title: "Abrir una receta",
+    body:
+      "Al abrir una receta ves la pestana Receta: formula completa, ingredientes, porcentajes panaderos, hidratacion, masa total y prefermentos. Es la vista principal de la receta y se recalcula sola al editar.",
+    preview: "recipe"
+  },
+  {
+    icon: "Prep",
+    title: "Preparacion",
+    body:
+      "La pestana Preparacion registra el proceso de elaboracion en cuatro secciones. Toca el encabezado de cada seccion para desplegarla o contraerla.",
+    preview: "sections"
+  },
+  {
+    icon: "Notas",
+    title: "Notas",
+    body:
+      "La pestana Notas guarda tips, sustituciones, variantes, conservacion y aclaraciones personales. Admite formato basico: negrita, cursiva, subrayado, listas con vinetas y listas numeradas.",
+    preview: "notes"
   },
   {
     icon: "Base",
@@ -364,6 +393,73 @@ function GuidePreview({ preview }: { preview: GuidePreviewKind }) {
     );
   }
 
+  if (preview === "recipe") {
+    return (
+      <View style={styles.previewCard}>
+        <Text style={styles.previewTitle}>La pestana Receta</Text>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>Hidratacion</Text>
+          <Text style={styles.previewValue}>70% 💧</Text>
+        </View>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>Masa total</Text>
+          <Text style={styles.previewValue}>2400 g</Text>
+        </View>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>Prefermento</Text>
+          <Text style={styles.previewValue}>1 vinculado</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (preview === "sections") {
+    return (
+      <View style={styles.previewCard}>
+        <Text style={styles.previewTitle}>Secciones de Preparacion</Text>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>Preparacion</Text>
+          <Text style={styles.previewValue}>Pasos ordenados</Text>
+        </View>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>Fermentacion</Text>
+          <Text style={styles.previewValue}>Tiempo y temperatura</Text>
+        </View>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>Horneado</Text>
+          <Text style={styles.previewValue}>Temperatura y duracion</Text>
+        </View>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>Rendimiento</Text>
+          <Text style={styles.previewValue}>Cantidad final</Text>
+        </View>
+        <Text style={styles.previewOptionBody}>
+          Toca el encabezado de cada seccion para desplegarla o contraerla.
+        </Text>
+      </View>
+    );
+  }
+
+  if (preview === "notes") {
+    return (
+      <View style={styles.previewCard}>
+        <Text style={styles.previewTitle}>Formato de Notas</Text>
+        <View style={styles.previewLine}>
+          <Text style={[styles.previewLabel, styles.previewNoteBold]}>Negrita</Text>
+          <Text style={[styles.previewValue, styles.previewNoteItalic]}>Cursiva</Text>
+        </View>
+        <View style={styles.previewLine}>
+          <Text style={[styles.previewLabel, styles.previewNoteUnderline]}>Subrayado</Text>
+          <Text style={styles.previewValue}>• Vinetas</Text>
+        </View>
+        <View style={styles.previewLine}>
+          <Text style={styles.previewLabel}>1. Lista</Text>
+          <Text style={styles.previewValue}>Tips y variantes</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.previewCard}>
       <Text style={styles.previewTitle}>Masa y ajuste activo</Text>
@@ -552,6 +648,15 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 12,
     lineHeight: 18
+  },
+  previewNoteBold: {
+    fontWeight: "800"
+  },
+  previewNoteItalic: {
+    fontStyle: "italic"
+  },
+  previewNoteUnderline: {
+    textDecorationLine: "underline"
   },
   actions: {
     alignItems: "center",

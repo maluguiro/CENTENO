@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,15 +12,12 @@ import {
 
 import {
   getSelectionMarks,
-  parseRichTextBlocks,
   parseRichTextDocument,
   serializeRichTextDocument,
   toggleLinePrefixInDocument,
   toggleMarkInDocument,
   updateRichTextDocumentText,
-  type RichTextBlock,
   type RichTextDocument,
-  type RichTextInlineToken,
   type RichTextMark,
   type RichTextSelection
 } from "@/lib/richText";
@@ -35,56 +31,6 @@ type RichTextEditorProps = {
   containerStyle?: StyleProp<ViewStyle>;
   minHeight?: number;
 };
-
-function InlineTokens({ tokens }: { tokens: RichTextInlineToken[] }) {
-  return (
-    <>
-      {tokens.map((token, index) => (
-        <Text
-          key={`${token.text}-${index}`}
-          style={[
-            styles.previewText,
-            token.marks.includes("bold") && styles.bold,
-            token.marks.includes("italic") && styles.italic,
-            token.marks.includes("underline") && styles.underline
-          ]}
-        >
-          {token.text}
-        </Text>
-      ))}
-    </>
-  );
-}
-
-function PreviewBlock({ block }: { block: RichTextBlock }) {
-  if (block.type === "bullet") {
-    return (
-      <View style={styles.previewRow}>
-        <Text style={styles.previewPrefix}>•</Text>
-        <Text style={styles.previewParagraph}>
-          <InlineTokens tokens={block.tokens} />
-        </Text>
-      </View>
-    );
-  }
-
-  if (block.type === "numbered") {
-    return (
-      <View style={styles.previewRow}>
-        <Text style={styles.previewPrefix}>{`${block.index}.`}</Text>
-        <Text style={styles.previewParagraph}>
-          <InlineTokens tokens={block.tokens} />
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <Text style={styles.previewParagraph}>
-      <InlineTokens tokens={block.tokens} />
-    </Text>
-  );
-}
 
 function ToolbarButton({
   active,
@@ -138,10 +84,6 @@ export function RichTextEditor({
     setPendingMark(null);
   }, [value]);
 
-  const previewBlocks = useMemo(
-    () => parseRichTextBlocks(serializeRichTextDocument(document)),
-    [document]
-  );
   const selectionMarks = useMemo(
     () => getSelectionMarks(document, selection),
     [document, selection]
@@ -171,10 +113,7 @@ export function RichTextEditor({
 
   return (
     <View style={[styles.container, containerStyle]}>
-      <View style={styles.toolbarHeader}>
-        <Text style={styles.toolbarTitle}>Formato</Text>
-        {pendingMark ? <Text style={styles.toolbarHint}>Siguiente texto: activo</Text> : null}
-      </View>
+      <Text style={styles.toolbarTitle}>Formato</Text>
       <View style={styles.toolbar}>
         <ToolbarButton
           accessibilityLabel="Negrita"
@@ -207,44 +146,26 @@ export function RichTextEditor({
           onPress={() => handleToggleList("numbered")}
         />
       </View>
-      <View style={styles.editorStack}>
-        <View style={styles.editorSection}>
-          <Text style={styles.sectionLabel}>Editar</Text>
-          <TextInput
-            multiline
-            onChangeText={(nextText) => {
-              const next = updateRichTextDocumentText(document, nextText, selection, pendingMark);
-              setDocument(next.document);
-              setPendingMark(next.pendingMark ?? null);
-              onChangeText(serializeRichTextDocument(next.document));
-            }}
-            onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
-            placeholder={placeholder}
-            placeholderTextColor={theme.colors.textMuted}
-            selection={selection}
-            selectionColor="rgba(122, 160, 214, 0.28)"
-            style={[styles.input, { minHeight }, inputStyle]}
-            textAlignVertical="top"
-            value={document.text}
-          />
-        </View>
-        <View style={styles.previewSection}>
-          <Text style={styles.sectionLabel}>Vista previa</Text>
-          <ScrollView
-            nestedScrollEnabled
-            style={[styles.previewCard, { maxHeight: Math.max(140, minHeight - 32) }]}
-          >
-            <View style={styles.previewContent}>
-              {previewBlocks.length ? (
-                previewBlocks.map((block, index) => (
-                  <PreviewBlock block={block} key={`block-${index}`} />
-                ))
-              ) : (
-                <Text style={styles.placeholder}>{placeholder ?? "Sin contenido"}</Text>
-              )}
-            </View>
-          </ScrollView>
-        </View>
+      <View style={styles.editorSection}>
+        <Text style={styles.sectionLabel}>Editar</Text>
+        <TextInput
+          multiline
+          onChangeText={(nextText) => {
+            const next = updateRichTextDocumentText(document, nextText, selection, pendingMark);
+            setDocument(next.document);
+            setPendingMark(next.pendingMark ?? null);
+            onChangeText(serializeRichTextDocument(next.document));
+          }}
+          onSelectionChange={(event) => setSelection(event.nativeEvent.selection)}
+          placeholder={placeholder}
+          placeholderTextColor={theme.colors.textMuted}
+          scrollEnabled
+          selection={selection}
+          selectionColor="rgba(122, 160, 214, 0.28)"
+          style={[styles.input, { minHeight }, inputStyle]}
+          textAlignVertical="top"
+          value={document.text}
+        />
       </View>
     </View>
   );
@@ -254,35 +175,19 @@ const styles = StyleSheet.create({
   container: {
     gap: theme.spacing.xs
   },
-  toolbarHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between"
-  },
   toolbarTitle: {
     color: theme.colors.text,
     fontSize: 12,
     fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8
-  },
-  toolbarHint: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
-    fontWeight: "600"
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
   },
   toolbar: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8
   },
-  editorStack: {
-    gap: theme.spacing.sm
-  },
   editorSection: {
-    gap: 6
-  },
-  previewSection: {
     gap: 6
   },
   sectionLabel: {
@@ -316,56 +221,6 @@ const styles = StyleSheet.create({
   },
   toolbarButtonTextActive: {
     color: "#F8F5F1"
-  },
-  previewCard: {
-    backgroundColor: "#FFFDF8",
-    borderColor: theme.colors.borderStrong,
-    borderRadius: theme.radius.sm,
-    borderWidth: 1,
-    minHeight: 120,
-    paddingHorizontal: 0,
-    paddingVertical: 0
-  },
-  previewContent: {
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12
-  },
-  previewRow: {
-    flexDirection: "row",
-    gap: 8
-  },
-  previewPrefix: {
-    color: theme.colors.text,
-    fontSize: 14,
-    fontWeight: "700",
-    lineHeight: 22,
-    minWidth: 18
-  },
-  previewParagraph: {
-    color: theme.colors.text,
-    flex: 1,
-    fontSize: 14,
-    lineHeight: 22
-  },
-  previewText: {
-    color: theme.colors.text,
-    fontSize: 14,
-    lineHeight: 22
-  },
-  bold: {
-    fontWeight: "800"
-  },
-  italic: {
-    fontStyle: "italic"
-  },
-  underline: {
-    textDecorationLine: "underline"
-  },
-  placeholder: {
-    color: theme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 22
   },
   input: {
     backgroundColor: theme.colors.surfaceElevated,

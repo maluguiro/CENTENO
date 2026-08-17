@@ -11,10 +11,13 @@ import { normalizeRecipeMetadata } from "@/lib/recipeFields";
 const CURRENT_RECIPE_EXPORT_VERSION = 2;
 const CURRENT_RECIPES_BACKUP_VERSION = 2;
 
+export type RecipeShareScope = "complete" | "formula";
+
 type RecipeExportPayload = {
   type: "centeno.recipe";
   version: 1 | 2;
   exportedAt: string;
+  exportMode?: RecipeShareScope;
   recipe: Recipe;
 };
 
@@ -287,12 +290,23 @@ export function isRecipeBackupPayload(payload: unknown): payload is RecipesBacku
   );
 }
 
-export function exportRecipeToJson(recipe: Recipe) {
+export function buildRecipeForSharing(recipe: Recipe, scope: RecipeShareScope): Recipe {
+  if (scope === "complete") {
+    return { ...recipe };
+  }
+
+  const { preparation, fermentation, baking, yield: yieldData, notes, ...formulaOnly } = recipe;
+
+  return formulaOnly;
+}
+
+export function exportRecipeToJson(recipe: Recipe, scope: RecipeShareScope = "complete") {
   const payload: RecipeExportPayload = {
     type: "centeno.recipe",
     version: CURRENT_RECIPE_EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
-    recipe
+    exportMode: scope,
+    recipe: buildRecipeForSharing(recipe, scope)
   };
 
   return JSON.stringify(payload, null, 2);

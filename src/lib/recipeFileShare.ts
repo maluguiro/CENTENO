@@ -1,4 +1,8 @@
-import { exportRecipeToJson, exportRecipesToJson } from "@/lib/recipeImportExport";
+import {
+  exportRecipeToJson,
+  exportRecipesToJson,
+  type RecipeShareScope
+} from "@/lib/recipeImportExport";
 import type { Recipe } from "@/types/recipe";
 
 const FALLBACK_FILE_BASENAME = "receta-centeno";
@@ -51,7 +55,10 @@ export function buildCentenoBackupFileName(date = new Date()) {
   return `${normalizeFileBaseName(`${FALLBACK_BACKUP_FILE_BASENAME}-${year}-${month}-${day}`)}.centeno`;
 }
 
-export async function createCentenoRecipeFile(recipe: Recipe) {
+export async function createCentenoRecipeFile(
+  recipe: Recipe,
+  scope: RecipeShareScope = "complete"
+) {
   const fileSystem = getFileSystemModule();
 
   if (!fileSystem?.cacheDirectory || !fileSystem.writeAsStringAsync) {
@@ -59,7 +66,7 @@ export async function createCentenoRecipeFile(recipe: Recipe) {
   }
 
   const fileUri = `${fileSystem.cacheDirectory}${buildCentenoFileName(recipe.name)}`;
-  await fileSystem.writeAsStringAsync(fileUri, exportRecipeToJson(recipe));
+  await fileSystem.writeAsStringAsync(fileUri, exportRecipeToJson(recipe, scope));
 
   return fileUri;
 }
@@ -77,7 +84,10 @@ export async function createCentenoRecipesBackupFile(recipes: Recipe[]) {
   return fileUri;
 }
 
-export async function shareCentenoRecipeFile(recipe: Recipe) {
+export async function shareCentenoRecipeFile(
+  recipe: Recipe,
+  scope: RecipeShareScope = "complete"
+) {
   const sharing = getSharingModule();
 
   if (!sharing?.isAvailableAsync || !sharing?.shareAsync) {
@@ -90,7 +100,7 @@ export async function shareCentenoRecipeFile(recipe: Recipe) {
     throw new Error("SHARING_UNAVAILABLE");
   }
 
-  const fileUri = await createCentenoRecipeFile(recipe);
+  const fileUri = await createCentenoRecipeFile(recipe, scope);
 
   await sharing.shareAsync(fileUri, {
     dialogTitle: "Compartir archivo CENTENO",

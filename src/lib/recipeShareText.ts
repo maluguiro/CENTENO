@@ -1,4 +1,8 @@
 import {
+  buildRecipeForSharing,
+  type RecipeShareScope
+} from "@/lib/recipeImportExport";
+import {
   getDoughWeight,
   getHydrationPercentage,
   getIngredientDisplayBreakdown,
@@ -27,26 +31,28 @@ function getCategoryLabel(category?: Recipe["category"]) {
 
 export function formatRecipeAsShareText(
   recipe: Recipe,
-  recipes: Recipe[] = []
+  recipes: Recipe[] = [],
+  scope: RecipeShareScope = "complete"
 ) {
+  const scopedRecipe = buildRecipeForSharing(recipe, scope);
   const recipeLookup = new Map(recipes.map((item) => [item.id, item]));
   const lines: string[] = [];
-  const hydration = getHydrationPercentage(recipe.ingredients);
-  const flourTotal = getTotalFlour(recipe.ingredients);
+  const hydration = getHydrationPercentage(scopedRecipe.ingredients);
+  const flourTotal = getTotalFlour(scopedRecipe.ingredients);
   const doughWeight = getDoughWeight(
-    recipe.ingredients,
-    (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
-    recipe.id
+    scopedRecipe.ingredients,
+    (linkedRecipeId: string) => recipeLookup.get(linkedRecipeId),
+    scopedRecipe.id
   );
 
   lines.push("CENTENO · Receta");
   lines.push("");
-  lines.push(recipe.name);
+  lines.push(scopedRecipe.name);
   lines.push("");
-  lines.push(`Tipo: ${getCategoryLabel(recipe.category)}`);
+  lines.push(`Tipo: ${getCategoryLabel(scopedRecipe.category)}`);
 
-  if (recipe.description?.trim()) {
-    lines.push(`Descripcion: ${recipe.description.trim()}`);
+  if (scopedRecipe.description?.trim()) {
+    lines.push(`Descripcion: ${scopedRecipe.description.trim()}`);
   }
 
   if (hydration > 0) {
@@ -61,24 +67,24 @@ export function formatRecipeAsShareText(
     lines.push(`Masa total: ${formatNumber(doughWeight)} g`);
   }
 
-  if (hasYieldData(recipe.yield)) {
-    lines.push(`Rendimiento: ${formatYieldSummary(recipe.yield)}`);
+  if (hasYieldData(scopedRecipe.yield)) {
+    lines.push(`Rendimiento: ${formatYieldSummary(scopedRecipe.yield)}`);
   }
 
   lines.push("");
   lines.push("Ingredientes:");
 
-  recipe.ingredients.forEach((ingredient) => {
+  scopedRecipe.ingredients.forEach((ingredient) => {
     const displayBreakdown = getIngredientDisplayBreakdown(
       ingredient,
-      recipe.ingredients,
-      (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
-      recipe.id
+      scopedRecipe.ingredients,
+      (linkedRecipeId: string) => recipeLookup.get(linkedRecipeId),
+      scopedRecipe.id
     );
     const prefermentBreakdown = getPrefermentBreakdown(
       ingredient,
-      (linkedRecipeId) => recipeLookup.get(linkedRecipeId),
-      recipe.id
+      (linkedRecipeId: string) => recipeLookup.get(linkedRecipeId),
+      scopedRecipe.id
     );
 
     if (ingredient.role === "preferment") {
@@ -112,45 +118,45 @@ export function formatRecipeAsShareText(
     }
   });
 
-  if (hasPreparation(recipe.preparation)) {
+  if (hasPreparation(scopedRecipe.preparation)) {
     lines.push("");
     lines.push("Preparacion:");
-    recipe.preparation?.steps.forEach((step, index) => {
+    scopedRecipe.preparation?.steps.forEach((step, index) => {
       lines.push(`${index + 1}. ${step}`);
     });
   }
 
-  if (hasFermentation(recipe.fermentation)) {
+  if (hasFermentation(scopedRecipe.fermentation)) {
     lines.push("");
     lines.push("Fermentacion:");
-    const summary = formatFermentationSummary(recipe.fermentation);
+    const summary = formatFermentationSummary(scopedRecipe.fermentation);
     if (summary) {
       lines.push(summary);
     }
-    if (recipe.fermentation?.instructions) {
-      lines.push(recipe.fermentation.instructions);
+    if (scopedRecipe.fermentation?.instructions) {
+      lines.push(scopedRecipe.fermentation.instructions);
     }
-    if (recipe.fermentation?.visualCue) {
-      lines.push(recipe.fermentation.visualCue);
+    if (scopedRecipe.fermentation?.visualCue) {
+      lines.push(scopedRecipe.fermentation.visualCue);
     }
   }
 
-  if (hasBaking(recipe.baking)) {
+  if (hasBaking(scopedRecipe.baking)) {
     lines.push("");
     lines.push("Horneado:");
-    const summary = formatBakingSummary(recipe.baking);
+    const summary = formatBakingSummary(scopedRecipe.baking);
     if (summary) {
       lines.push(summary);
     }
-    if (recipe.baking?.instructions) {
-      lines.push(recipe.baking.instructions);
+    if (scopedRecipe.baking?.instructions) {
+      lines.push(scopedRecipe.baking.instructions);
     }
   }
 
-  if (recipe.notes?.trim()) {
+  if (scopedRecipe.notes?.trim()) {
     lines.push("");
     lines.push("Notas:");
-    lines.push(richTextToPlainText(recipe.notes));
+    lines.push(richTextToPlainText(scopedRecipe.notes));
   }
 
   lines.push("");

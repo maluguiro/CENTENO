@@ -930,9 +930,199 @@ function runRecipeValidation() {
     "Los nuevos campos no deben alterar masa total."
   );
 
+  const formulaExport = exportRecipeToJson(baseRecipe, "formula");
+  const formulaPayload = JSON.parse(formulaExport) as { exportMode: string; recipe: Record<string, unknown> };
+  assert(formulaPayload.exportMode === "formula", "El export de formula debe declarar exportMode formula.");
+  assert(
+    !("preparation" in formulaPayload.recipe) &&
+      !("fermentation" in formulaPayload.recipe) &&
+      !("baking" in formulaPayload.recipe) &&
+      !("yield" in formulaPayload.recipe) &&
+      !("notes" in formulaPayload.recipe),
+    "El export de formula no debe incluir elaboracion, fermentacion, horneado, rendimiento ni notas."
+  );
+  assert(
+    Array.isArray(formulaPayload.recipe.ingredients) &&
+      typeof formulaPayload.recipe.description === "string" &&
+      formulaPayload.recipe.scalingTarget !== undefined,
+    "El export de formula debe conservar ingredientes, descripcion y objetivo de produccion."
+  );
+
+  const importedFormula = parseImportedRecipe(formulaExport);
+  assert(importedFormula.name === baseRecipe.name, "Formula importada no conserva el nombre.");
+  assert(importedFormula.ingredients.length === 2, "Formula importada no conserva ingredientes.");
+  assert(
+    importedFormula.description === baseRecipe.description,
+    "Formula importada no conserva la descripcion."
+  );
+  assert(importedFormula.preparation === undefined, "Formula importada no debe tener preparation.");
+  assert(importedFormula.fermentation === undefined, "Formula importada no debe tener fermentation.");
+  assert(importedFormula.baking === undefined, "Formula importada no debe tener baking.");
+  assert(importedFormula.yield === undefined, "Formula importada no debe tener yield.");
+  assert(importedFormula.notes === "", "Formula importada no debe tener notas.");
+  assertApprox(
+    getRecipeSummary(importedFormula).hydration,
+    getRecipeSummary(baseRecipe).hydration,
+    "La formula importada debe conservar la hidratacion."
+  );
+  assertApprox(
+    getRecipeSummary(importedFormula).doughWeight,
+    getRecipeSummary(baseRecipe).doughWeight,
+    "La formula importada debe conservar la masa total."
+  );
+
+  const completeExport = exportRecipeToJson(baseRecipe, "complete");
+  const completePayload = JSON.parse(completeExport) as { exportMode: string };
+  assert(completePayload.exportMode === "complete", "El export completo debe declarar exportMode complete.");
+  const importedComplete = parseImportedRecipe(completeExport);
+  assert(
+    importedComplete.preparation?.steps.length === 2 &&
+      importedComplete.fermentation?.timeMinMinutes === 60 &&
+      importedComplete.baking?.temperatureMinC === 210 &&
+      importedComplete.yield?.weightPerUnit === 900,
+    "El export completo debe conservar elaboracion, fermentacion, horneado y rendimiento."
+  );
+  assert(
+    importedComplete.notes === baseRecipe.notes,
+    "El export completo debe conservar las notas con su formato original."
+  );
+
+  const defaultExport = JSON.parse(exportRecipeToJson(baseRecipe)) as { exportMode: string };
+  assert(
+    defaultExport.exportMode === "complete",
+    "El export sin modo debe comportarse como completo."
+  );
+
+  const recipeSnapshot = JSON.stringify(baseRecipe);
+  exportRecipeToJson(baseRecipe, "formula");
+  exportRecipeToJson(baseRecipe, "complete");
+  assert(
+    JSON.stringify(baseRecipe) === recipeSnapshot,
+    "Exportar en cualquier modo no debe modificar la receta original."
+  );
+
+  const importedFormulaWithPreferment = parseImportedRecipe(exportRecipeToJson(parentRecipe, "formula"));
+  const prefermentLink = importedFormulaWithPreferment.ingredients.find(
+    (ingredient) => ingredient.role === "preferment"
+  );
+  assert(
+    prefermentLink?.linkedRecipeId === "preferment-1" &&
+      prefermentLink.linkedRecipeName === "Masa madre 60",
+    "La formula exportada debe conservar el vinculo al prefermento."
+  );
+  assert(
+    importedFormulaWithPreferment.notes === "" &&
+      importedFormulaWithPreferment.preparation === undefined,
+    "La formula exportada del padre no debe arrastrar contenido editorial."
+  );
+
+  const textFormula = formatRecipeAsShareText(baseRecipe, [], "formula");
+  assert(
+    textFormula.includes("Ingredientes:") && textFormula.includes("Hidratacion:"),
+    "Texto formula debe contener ingredientes e hidratacion."
+  );
+  assert(
+    !textFormula.includes("Preparacion:") &&
+      !textFormula.includes("Fermentacion:") &&
+      !textFormula.includes("Horneado:") &&
+      !textFormula.includes("Rendimiento:") &&
+      !textFormula.includes("Notas:"),
+    "Texto formula no debe contener titulos editoriales."
+  );
+  assert(
+    textFormula.includes("Exportado desde CENTENO"),
+    "Texto formula debe cerrar con la marca de CENTENO."
+  );
+
+  const textComplete = formatRecipeAsShareText(baseRecipe, [], "complete");
+  assert(
+    textComplete.includes("Preparacion:") &&
+      textComplete.includes("1. Mezclar ingredientes.") &&
+      textComplete.includes("2. Amasar hasta lograr estructura."),
+    "Texto completo debe incluir pasos numerados de preparacion."
+  );
+  assert(
+    textComplete.includes("Fermentacion:") && textComplete.includes("Horneado:"),
+    "Texto completo debe incluir fermentacion y horneado."
+  );
+  assert(
+    textComplete.includes("Rendimiento:"),
+    "Texto completo debe incluir rendimiento."
+  );
+  assert(
+    textComplete.includes("Notas:") && !textComplete.includes("**"),
+    "Texto completo debe incluir notas sin marcadores Markdown internos."
+  );
+  assert(
+    textComplete.includes("Tipo: Panaderia") && textComplete.includes("Masa total:"),
+    "Texto completo debe conservar datos de ficha tecnica."
+  );
+
+  const jsonFormulaPayload = JSON.parse(exportRecipeToJson(baseRecipe, "formula")) as {
+    exportMode: string;
+    recipe: Record<string, unknown>;
+  };
+  assert(jsonFormulaPayload.exportMode === "formula", "JSON formula debe declarar exportMode formula.");
+  assert(
+    !("preparation" in jsonFormulaPayload.recipe) &&
+      !("fermentation" in jsonFormulaPayload.recipe) &&
+      !("baking" in jsonFormulaPayload.recipe) &&
+      !("yield" in jsonFormulaPayload.recipe) &&
+      !("notes" in jsonFormulaPayload.recipe),
+    "JSON formula no debe tener claves editoriales."
+  );
+
+  const jsonCompletePayload = JSON.parse(exportRecipeToJson(baseRecipe, "complete")) as {
+    exportMode: string;
+    recipe: Record<string, unknown>;
+  };
+  assert(
+    jsonCompletePayload.exportMode === "complete" &&
+      "preparation" in jsonCompletePayload.recipe &&
+      "fermentation" in jsonCompletePayload.recipe &&
+      "baking" in jsonCompletePayload.recipe &&
+      "yield" in jsonCompletePayload.recipe &&
+      "notes" in jsonCompletePayload.recipe,
+    "JSON completo debe tener todas las claves editoriales."
+  );
+  assert(
+    typeof jsonCompletePayload.recipe.notes === "string" &&
+      (jsonCompletePayload.recipe.notes as string).includes("Tip"),
+    "JSON completo debe preservar las notas con su contenido original."
+  );
+
+  const roundTripJsonFormula = parseImportedRecipe(exportRecipeToJson(baseRecipe, "formula"));
+  assert(
+    roundTripJsonFormula.preparation === undefined &&
+      roundTripJsonFormula.fermentation === undefined &&
+      roundTripJsonFormula.baking === undefined &&
+      roundTripJsonFormula.yield === undefined &&
+      roundTripJsonFormula.notes === "" &&
+      roundTripJsonFormula.ingredients.length === 2,
+    "Round-trip JSON formula: editorial ausente, formula preservada."
+  );
+
+  const roundTripJsonComplete = parseImportedRecipe(exportRecipeToJson(baseRecipe, "complete"));
+  assert(
+    roundTripJsonComplete.preparation?.steps.length === 2 &&
+      roundTripJsonComplete.fermentation?.timeMinMinutes === 60 &&
+      roundTripJsonComplete.baking?.temperatureMinC === 210 &&
+      roundTripJsonComplete.yield?.weightPerUnit === 900 &&
+      roundTripJsonComplete.notes === baseRecipe.notes,
+    "Round-trip JSON completo: todos los campos editoriales preservados."
+  );
+
+  const snapshotBeforeText = JSON.stringify(baseRecipe);
+  formatRecipeAsShareText(baseRecipe, [], "formula");
+  formatRecipeAsShareText(baseRecipe, [], "complete");
+  assert(
+    JSON.stringify(baseRecipe) === snapshotBeforeText,
+    "Compartir como texto no debe modificar la receta original."
+  );
+
   const mergedSamples = mergeMissingSampleRecipes([baseRecipe], sampleRecipes);
   assert(
-    mergedSamples.length === 2,
+    mergedSamples.length === sampleRecipes.length + 1,
     "Restaurar samples debe agregar las recetas faltantes."
   );
 

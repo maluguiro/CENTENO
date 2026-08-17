@@ -25,19 +25,14 @@ import {
 } from "@/components/GuideModal";
 import { setClipboardText } from "@/lib/clipboard";
 import { getGuideSeen, setGuideSeen } from "@/lib/guideStorage";
-import {
-  pickCentenoRecipeFileContent,
-  shareCentenoRecipeFile,
-  shareCentenoRecipesBackupFile
-} from "@/lib/recipeFileShare";
-import { getClipboardText } from "@/lib/clipboard";
+import { pickCentenoRecipeFileContent, shareCentenoRecipeFile } from "@/lib/recipeFileShare";
 import {
   exportRecipeToJson,
-  parseImportedCentenoFile,
   parseImportedRecipe,
-  prepareImportedRecipe
+  prepareImportedRecipe,
+  type RecipeShareScope
 } from "@/lib/recipeImportExport";
-import { cloneRecipeMetadata } from "@/lib/recipeFields";
+import { getClipboardText } from "@/lib/clipboard";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { Screen } from "@/components/Screen";
 import { useRecipes } from "@/store/RecipesProvider";
@@ -93,7 +88,8 @@ function buildDuplicateRecipeName(name: string, recipes: Recipe[]) {
   return `${baseName} (copia ${index})`;
 }
 
-type HomeExportMode = "selector" | "shareText" | "centenoFile" | "importCode" | null;
+type HomeExportFormat = "centeno" | "text" | "json";
+type HomeExportMode = "selector" | "scope" | "shareText" | "importCode" | null;
 type HomeImportMode = "selector" | "backupCode";
 
 export default function HomeScreen() {
@@ -103,7 +99,6 @@ export default function HomeScreen() {
     deleteAllRecipes,
     deleteRecipe,
     importRecipe,
-    importRecipes,
     isReady,
     recipes,
     restoreSampleRecipes,
@@ -118,6 +113,8 @@ export default function HomeScreen() {
   const [importMode, setImportMode] = useState<HomeImportMode>("selector");
   const [quickRecipeId, setQuickRecipeId] = useState<string | null>(null);
   const [quickExportMode, setQuickExportMode] = useState<HomeExportMode>(null);
+  const [quickExportFormat, setQuickExportFormat] = useState<HomeExportFormat | null>(null);
+  const [quickExportScope, setQuickExportScope] = useState<RecipeShareScope>("complete");
   const [quickExportJson, setQuickExportJson] = useState("");
   const [quickShareText, setQuickShareText] = useState("");
   const [quickCopyFeedback, setQuickCopyFeedback] = useState<HomeExportMode>(null);
@@ -225,7 +222,6 @@ export default function HomeScreen() {
       })
       .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
   }, [categoryFilter, query, recipes]);
-  const recipeLookup = useMemo(() => new Map(recipes.map((recipe) => [recipe.id, recipe])), [recipes]);
 
   const quickRecipe = useMemo(
     () => recipes.find((recipe) => recipe.id === quickRecipeId),
@@ -361,7 +357,8 @@ export default function HomeScreen() {
 
     updateRecipe(quickRecipe.id, {
       name: quickRecipe.name,
-      ...cloneRecipeMetadata(quickRecipe),
+      description: quickRecipe.description ?? "",
+      notes: quickRecipe.notes ?? "",
       category: quickRecipe.category ?? "bakery",
       useAsPreferment: !quickRecipe.useAsPreferment,
       scalingTarget: quickRecipe.scalingTarget,
@@ -384,7 +381,8 @@ export default function HomeScreen() {
 
     createRecipe({
       name: buildDuplicateRecipeName(quickRecipe.name, recipes),
-      ...cloneRecipeMetadata(quickRecipe),
+      description: quickRecipe.description ?? "",
+      notes: quickRecipe.notes ?? "",
       category: quickRecipe.category ?? "bakery",
       useAsPreferment: quickRecipe.useAsPreferment ?? false,
       scalingTarget: quickRecipe.scalingTarget,
@@ -406,10 +404,42 @@ export default function HomeScreen() {
       return;
     }
 
-    setQuickExportJson(exportRecipeToJson(quickRecipe));
-    setQuickShareText(formatRecipeAsShareText(quickRecipe, recipes));
+    setQuickExportFormat(null);
+    setQuickExportScope("complete");
     setQuickCopyFeedback(null);
     setQuickExportMode("selector");
+  }
+
+  function openQuickExportScope(format: HomeExportFormat) {
+    setQuickExportFormat(format);
+    setQuickCopyFeedback(null);
+    setQuickExportMode("scope");
+  }
+
+  function handleQuickShareScope(scope: RecipeShareScope) {
+    if (!quickRecipe) {
+      return;
+    }
+
+    setQuickExportScope(scope);
+
+    if (quickExportFormat === "centeno") {
+      handleShareQuickRecipeFile(scope);
+      return;
+    }
+
+    if (quickExportFormat === "text") {
+      setQuickShareText(formatRecipeAsShareText(quickRecipe, recipes, scope));
+      setQuickCopyFeedback(null);
+      setQuickExportMode("shareText");
+      return;
+    }
+
+    if (quickExportFormat === "json") {
+      setQuickExportJson(exportRecipeToJson(quickRecipe, scope));
+      setQuickCopyFeedback(null);
+      setQuickExportMode("importCode");
+    }
   }
 
   async function handleCopyQuickExport(
@@ -426,13 +456,13 @@ export default function HomeScreen() {
     showQuickCopyFeedback(mode);
   }
 
-  async function handleShareQuickRecipeFile() {
+  async function handleShareQuickRecipeFile(scope: RecipeShareScope) {
     if (!quickRecipe) {
       return;
     }
 
     try {
-      await shareCentenoRecipeFile(quickRecipe);
+      await shareCentenoRecipeFile(quickRecipe, scope);
       closeQuickExport();
       closeQuickActions();
     } catch (error) {
@@ -453,43 +483,16 @@ export default function HomeScreen() {
         return;
       }
 
-      const imported = parseImportedCentenoFile(result.content, recipes);
+      const parsedRecipe = parseImportedRecipe(result.content);
+      const preparedRecipe = prepareImportedRecipe(parsedRecipe, recipes);
 
-      if (imported.type === "backup") {
-        const importedCount = importRecipes(imported.recipes);
-        closeImportModal();
-        Alert.alert(
-          importedCount > 0 ? "Backup importado correctamente." : "El backup no agrego recetas nuevas."
-        );
-        return;
-      }
-
-      importRecipe(imported.recipes[0]);
+      importRecipe(preparedRecipe);
       closeImportModal();
       Alert.alert("Receta importada correctamente.");
     } catch {
       setImportError(
         "No se pudo importar el archivo. Asegurate de elegir un archivo exportado desde CENTENO."
       );
-    }
-  }
-
-  async function handleExportAllRecipes() {
-    if (!recipes.length) {
-      Alert.alert("No hay recetas para exportar.");
-      return;
-    }
-
-    try {
-      await shareCentenoRecipesBackupFile(recipes);
-      setSettingsVisible(false);
-    } catch (error) {
-      if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
-        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
-        return;
-      }
-
-      Alert.alert("No se pudo crear el backup del recetario.");
     }
   }
 
@@ -620,7 +623,7 @@ export default function HomeScreen() {
             <View style={styles.brandCopy}>
               <Text style={styles.brand}>CENTENO</Text>
               <Text style={styles.brandSubtle}>Tu libreta de formulas panaderas</Text>
-            </View>
+            </View> 
           </View>
         </View>
       }
@@ -654,7 +657,6 @@ export default function HomeScreen() {
         {filteredRecipes.map((recipe) => (
           <FormulaListItem
             key={recipe.id}
-            recipeLookup={(recipeId) => recipeLookup.get(recipeId)}
             onLongPress={() => openQuickActions(recipe)}
             onPress={() => router.push(`/recipes/${recipe.id}`)}
             recipe={recipe}
@@ -758,7 +760,7 @@ export default function HomeScreen() {
                       Elegi como queres compartir esta receta.
                   </Text>
                   <Pressable
-                    onPress={() => setQuickExportMode("shareText")}
+                    onPress={() => openQuickExportScope("text")}
                     style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
                   >
                     <Text style={styles.exportOptionTitle}>Compartir como texto</Text>
@@ -767,7 +769,7 @@ export default function HomeScreen() {
                       </Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => setQuickExportMode("centenoFile")}
+                      onPress={() => openQuickExportScope("centeno")}
                       style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
                     >
                       <Text style={styles.exportOptionTitle}>Compartir archivo CENTENO</Text>
@@ -776,7 +778,7 @@ export default function HomeScreen() {
                       </Text>
                     </Pressable>
                     <Pressable
-                      onPress={() => setQuickExportMode("importCode")}
+                      onPress={() => openQuickExportScope("json")}
                       style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
                     >
                       <Text style={styles.exportOptionTitle}>Codigo de respaldo</Text>
@@ -795,12 +797,30 @@ export default function HomeScreen() {
                   </>
                 ) : null}
 
-                {quickExportMode === "centenoFile" ? (
+                {quickExportMode === "scope" ? (
                   <>
-                    <Text style={styles.modalTitle}>Compartir archivo CENTENO</Text>
+                    <Text style={styles.modalTitle}>¿Que queres compartir?</Text>
                     <Text style={styles.modalHelper}>
-                      Se va a crear un archivo .centeno para importarlo en otra instalacion de CENTENO.
+                      Elegi cuanta informacion incluir.
                     </Text>
+                    <Pressable
+                      onPress={() => handleQuickShareScope("formula")}
+                      style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                    >
+                      <Text style={styles.exportOptionTitle}>Solo receta</Text>
+                      <Text style={styles.exportOptionDescription}>
+                        Ingredientes, cantidades, porcentajes y formula.
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => handleQuickShareScope("complete")}
+                      style={({ pressed }) => [styles.exportOption, pressed && styles.toolActionPressed]}
+                    >
+                      <Text style={styles.exportOptionTitle}>Receta completa</Text>
+                      <Text style={styles.exportOptionDescription}>
+                        Incluye preparacion, fermentacion, horneado, rendimiento y notas.
+                      </Text>
+                    </Pressable>
                     <View style={styles.modalActions}>
                       <Pressable
                         onPress={() => setQuickExportMode("selector")}
@@ -809,13 +829,10 @@ export default function HomeScreen() {
                         <Text style={styles.textActionLabel}>Volver</Text>
                       </Pressable>
                       <Pressable
-                        onPress={handleShareQuickRecipeFile}
-                        style={({ pressed }) => [
-                          styles.secondaryFilledAction,
-                          pressed && styles.secondaryFilledActionPressed
-                        ]}
+                        onPress={closeQuickExport}
+                        style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
                       >
-                        <Text style={styles.secondaryFilledActionLabel}>Compartir archivo</Text>
+                        <Text style={styles.textActionLabel}>Cancelar</Text>
                       </Pressable>
                     </View>
                   </>
@@ -850,7 +867,7 @@ export default function HomeScreen() {
                   />
                   <View style={styles.modalActions}>
                     <Pressable
-                      onPress={() => setQuickExportMode("selector")}
+                      onPress={() => setQuickExportMode("scope")}
                       style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
                     >
                       <Text style={styles.textActionLabel}>Volver</Text>
@@ -894,7 +911,7 @@ export default function HomeScreen() {
                   />
                   <View style={styles.modalActions}>
                     <Pressable
-                      onPress={() => setQuickExportMode("selector")}
+                      onPress={() => setQuickExportMode("scope")}
                       style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
                     >
                       <Text style={styles.textActionLabel}>Volver</Text>
@@ -935,15 +952,6 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
               >
                 <Text style={styles.toolActionTitle}>Importar receta</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleExportAllRecipes}
-                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
-              >
-                <Text style={styles.toolActionTitle}>Exportar todas las recetas</Text>
-                <Text style={styles.toolActionDescription}>
-                  Crea un respaldo completo de tu recetario.
-                </Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -1562,12 +1570,6 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 15
   },
-  toolActionDescription: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 4
-  },
   toolActionDanger: {
     color: theme.colors.danger
   },
@@ -1715,3 +1717,4 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   }
 });
+

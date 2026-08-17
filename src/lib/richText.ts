@@ -37,6 +37,21 @@ function clampSelection(value: string, selection: RichTextSelection): RichTextSe
   return { start, end };
 }
 
+function trimSpanToContent(text: string, start: number, end: number) {
+  let spanStart = start;
+  let spanEnd = end;
+
+  while (spanStart < spanEnd && /\s/.test(text[spanStart])) {
+    spanStart += 1;
+  }
+
+  while (spanEnd > spanStart && /\s/.test(text[spanEnd - 1])) {
+    spanEnd -= 1;
+  }
+
+  return spanStart < spanEnd ? { start: spanStart, end: spanEnd } : undefined;
+}
+
 function normalizeSpans(spans: RichTextSpan[]) {
   return spans
     .filter((span) => span.end > span.start)
@@ -209,62 +224,125 @@ function shiftSpans(
   return normalizeSpans(next);
 }
 
+type InlineDelimiter = {
+  type: RichTextMark;
+  textPos: number;
+};
+
 function parseInlineMarkdown(line: string, lineOffset: number) {
-  let index = 0;
-  let text = "";
+  const stack: InlineDelimiter[] = [];
   const spans: RichTextSpan[] = [];
+  let text = "";
+  let index = 0;
+
+  function findOpen(type: RichTextMark) {
+    for (let stackIndex = stack.length - 1; stackIndex >= 0; stackIndex -= 1) {
+      if (stack[stackIndex].type === type) {
+        return stack[stackIndex];
+      }
+    }
+
+    return undefined;
+  }
+
+  function closeSpan(mark: RichTextMark, opened: InlineDelimiter) {
+    const stackIndex = stack.lastIndexOf(opened);
+    if (stackIndex !== -1) {
+      stack.splice(stackIndex, 1);
+    }
+
+    spans.push({
+      start: lineOffset + opened.textPos,
+      end: lineOffset + text.length,
+      mark
+    });
+  }
 
   while (index < line.length) {
-    if (line.startsWith("__", index)) {
-      const endIndex = line.indexOf("__", index + 2);
-      if (endIndex > index + 2) {
-        const content = line.slice(index + 2, endIndex);
-        const start = text.length;
-        text += content;
-        spans.push({
-          start: lineOffset + start,
-          end: lineOffset + start + content.length,
-          mark: "underline"
-        });
-        index = endIndex + 2;
-        continue;
+    const char = line[index];
+
+    if (char !== "*" && char !== "_") {
+      let next = index;
+      while (next < line.length && line[next] !== "*" && line[next] !== "_") {
+        next += 1;
+      }
+
+      text += line.slice(index, next);
+      index = next;
+      continue;
+    }
+
+    let runEnd = index;
+    while (runEnd < line.length && line[runEnd] === char) {
+      runEnd += 1;
+    }
+
+    const runLength = runEnd - index;
+    const before = index > 0 ? line[index - 1] : undefined;
+    const after = runEnd < line.length ? line[runEnd] : undefined;
+    const canOpen = after !== undefined && after !== char && after !== " " && after !== "\t";
+    const canClose = before !== undefined && before !== char && before !== " " && before !== "\t";
+
+    let remaining = runLength;
+
+    if (char === "_") {
+      while (remaining >= 2) {
+        remaining -= 2;
+        const opened = canClose ? findOpen("underline") : undefined;
+        if (opened) {
+          closeSpan("underline", opened);
+        } else if (canOpen) {
+          stack.push({ type: "underline", textPos: text.length });
+        } else {
+          text += "__";
+        }
+      }
+
+      if (remaining === 1) {
+        text += "_";
+      }
+    } else {
+      while (remaining >= 2) {
+        remaining -= 2;
+        const opened = canClose ? findOpen("bold") : undefined;
+        if (opened) {
+          closeSpan("bold", opened);
+        } else if (canOpen) {
+          stack.push({ type: "bold", textPos: text.length });
+        } else {
+          text += "**";
+        }
+      }
+
+      if (remaining === 1) {
+        const opened = canClose ? findOpen("italic") : undefined;
+        if (opened) {
+          closeSpan("italic", opened);
+        } else if (canOpen) {
+          stack.push({ type: "italic", textPos: text.length });
+        } else {
+          text += "*";
+        }
       }
     }
 
-    if (line.startsWith("**", index)) {
-      const endIndex = line.indexOf("**", index + 2);
-      if (endIndex > index + 2) {
-        const content = line.slice(index + 2, endIndex);
-        const start = text.length;
-        text += content;
-        spans.push({
-          start: lineOffset + start,
-          end: lineOffset + start + content.length,
-          mark: "bold"
-        });
-        index = endIndex + 2;
-        continue;
-      }
-    }
+    index = runEnd;
+  }
 
-    if (line.startsWith("*", index)) {
-      const endIndex = line.indexOf("*", index + 1);
-      if (endIndex > index + 1) {
-        const content = line.slice(index + 1, endIndex);
-        const start = text.length;
-        text += content;
-        spans.push({
-          start: lineOffset + start,
-          end: lineOffset + start + content.length,
-          mark: "italic"
-        });
-        index = endIndex + 1;
-        continue;
-      }
-    }
+  for (let stackIndex = stack.length - 1; stackIndex >= 0; stackIndex -= 1) {
+    const delimiter = stack[stackIndex];
+    const marker = delimiter.type === "bold" ? "**" : delimiter.type === "underline" ? "__" : "*";
+    const at = delimiter.textPos;
+    text = text.slice(0, at) + marker + text.slice(at);
 
-    text += line[index];
-    index += 1;
+    spans.forEach((span) => {
+      if (span.start >= at) {
+        span.start += marker.length;
+        span.end += marker.length;
+      } else if (span.end >= at) {
+        span.end += marker.length;
+      }
+    });
   }
 
   return {
@@ -507,19 +585,30 @@ export function toggleMarkInDocument(
     return document;
   }
 
+  if (hasUniformMark(document, nextSelection, mark)) {
+    return {
+      ...document,
+      spans: removeSpan(document.spans, {
+        start: nextSelection.start,
+        end: nextSelection.end,
+        mark
+      })
+    };
+  }
+
+  const span = trimSpanToContent(document.text, nextSelection.start, nextSelection.end);
+
+  if (!span) {
+    return document;
+  }
+
   return {
     ...document,
-    spans: hasUniformMark(document, nextSelection, mark)
-      ? removeSpan(document.spans, {
-          start: nextSelection.start,
-          end: nextSelection.end,
-          mark
-        })
-      : addSpan(document.spans, {
-          start: nextSelection.start,
-          end: nextSelection.end,
-          mark
-        })
+    spans: addSpan(document.spans, {
+      start: span.start,
+      end: span.end,
+      mark
+    })
   };
 }
 
@@ -535,6 +624,15 @@ export function toggleLinePrefixInDocument(
   const block = document.text.slice(blockStart, blockEnd);
   const lines = block.split("\n");
 
+  const prefixRegex = /^(?:\u2022\s+|\d+\.\s+)/;
+  const hasTargetPrefix =
+    kind === "bullet"
+      ? (line: string) => line.startsWith("\u2022 ")
+      : (line: string) => /^\d+\.\s+/.test(line);
+
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+  const shouldRemove = nonEmptyLines.length > 0 && nonEmptyLines.every(hasTargetPrefix);
+
   let lineNumber = 1;
   const nextBlock = lines
     .map((line) => {
@@ -542,7 +640,11 @@ export function toggleLinePrefixInDocument(
         return line;
       }
 
-      const withoutPrefix = line.replace(/^(?:\u2022\s+|\d+\.\s+)/, "");
+      const withoutPrefix = line.replace(prefixRegex, "");
+
+      if (shouldRemove) {
+        return withoutPrefix;
+      }
 
       if (kind === "bullet") {
         return `• ${withoutPrefix}`;
@@ -612,15 +714,19 @@ export function updateRichTextDocumentText(
       : undefined);
 
   if (insertedMark && insertedLength > 0) {
+    const span = trimSpanToContent(nextText, prefixLength, prefixLength + insertedLength);
+
     return {
-      document: {
-        ...nextDocument,
-        spans: addSpan(nextDocument.spans, {
-          start: prefixLength,
-          end: prefixLength + insertedLength,
-          mark: insertedMark
-        })
-      },
+      document: span
+        ? {
+            ...nextDocument,
+            spans: addSpan(nextDocument.spans, {
+              start: span.start,
+              end: span.end,
+              mark: insertedMark
+            })
+          }
+        : nextDocument,
       pendingMark: pendingMark ?? null
     };
   }

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { HydrationBar } from "@/components/HydrationBar";
 import { IngredientRow } from "@/components/IngredientRow";
+import { EditorialEditorSheet } from "@/components/EditorialEditorSheet";
 import { RichTextContent } from "@/components/RichTextContent";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { setClipboardText } from "@/lib/clipboard";
@@ -51,9 +52,16 @@ import {
 } from "@/lib/recipeFields";
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { shareCentenoRecipeFile } from "@/lib/recipeFileShare";
-import { exportRecipeToJson } from "@/lib/recipeImportExport";
+import { exportRecipeToJson, type RecipeShareScope } from "@/lib/recipeImportExport";
 import { canMoveIngredient, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
+import {
+  expandPreparationSection,
+  getInitialPreparationSections,
+  togglePreparationSection,
+  type PreparationSectionKey,
+  type PreparationSectionsState
+} from "@/lib/preparationSections";
 import {
   getDefaultRecipeViewTab,
   getRecipeCategoryIcon,
@@ -79,7 +87,8 @@ import type {
 type ScaleMode = "flour" | "dough" | "yield";
 type PrefermentMode = "grams" | "percent";
 type IngredientField = "quantity" | "percentage" | null;
-type ExportMode = "selector" | "shareText" | "centenoFile" | "importCode" | null;
+type ExportFormat = "centeno" | "text" | "json";
+type ExportMode = "selector" | "scope" | "shareText" | "importCode" | null;
 type PrefermentContextKind = "flour" | "water";
 type PreparationEditorKind = "preparation" | "fermentation" | "baking" | "yield" | "notes";
 
@@ -194,6 +203,8 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [scaleVisible, setScaleVisible] = useState(false);
   const [exportMode, setExportMode] = useState<ExportMode>(null);
+  const [exportFormat, setExportFormat] = useState<ExportFormat | null>(null);
+  const [exportScope, setExportScope] = useState<RecipeShareScope>("complete");
   const [exportJson, setExportJson] = useState("");
   const [shareText, setShareText] = useState("");
   const [copyFeedback, setCopyFeedback] = useState<"shareText" | "importCode" | null>(null);
@@ -204,6 +215,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   const [ingredientDraft, setIngredientDraft] = useState<IngredientDraftState>(emptyIngredient());
   const [lastEditedField, setLastEditedField] = useState<IngredientField>(null);
   const [activeTab, setActiveTab] = useState<RecipeViewTab>(getDefaultRecipeViewTab());
+  const [preparationSections, setPreparationSections] = useState<PreparationSectionsState>(
+    getInitialPreparationSections
+  );
   const [notesDraft, setNotesDraft] = useState(recipe.notes ?? "");
   const [preparationDraft, setPreparationDraft] = useState<string[]>(
     recipe.preparation?.steps.length ? [...recipe.preparation.steps] : [""]
@@ -355,6 +369,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
 
   useEffect(() => {
     setActiveTab(getDefaultRecipeViewTab());
+    setPreparationSections(getInitialPreparationSections);
   }, [recipe.id]);
 
   useEffect(() => {
@@ -632,11 +647,37 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
   }
 
   function openExportModal() {
-    setExportJson(exportRecipeToJson(recipe));
-    setShareText(formatRecipeAsShareText(recipe, recipes));
+    setExportFormat(null);
+    setExportScope("complete");
     setCopyFeedback(null);
     setExportMode("selector");
     setMenuVisible(false);
+  }
+
+  function openExportScope(format: ExportFormat) {
+    setExportFormat(format);
+    setCopyFeedback(null);
+    setExportMode("scope");
+  }
+
+  function handleShareScope(scope: RecipeShareScope) {
+    setExportScope(scope);
+
+    if (exportFormat === "centeno") {
+      handleShareRecipeFile(scope);
+      return;
+    }
+
+    if (exportFormat === "text") {
+      setShareText(formatRecipeAsShareText(recipe, recipes, scope));
+      setExportMode("shareText");
+      return;
+    }
+
+    if (exportFormat === "json") {
+      setExportJson(exportRecipeToJson(recipe, scope));
+      setExportMode("importCode");
+    }
   }
 
   function openEditorialEditor(kind: PreparationEditorKind) {
@@ -686,11 +727,20 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     setEditorVisible(null);
   }
 
+  function toggleSection(section: PreparationSectionKey) {
+    setPreparationSections((current) => togglePreparationSection(current, section));
+  }
+
+  function expandSection(section: PreparationSectionKey) {
+    setPreparationSections((current) => expandPreparationSection(current, section));
+  }
+
   function savePreparationDraft() {
     const steps = preparationDraft.map((step) => step.trim()).filter(Boolean);
     updateRecipeEditorialFields({
       preparation: steps.length ? { steps } : undefined
     });
+    expandSection("preparation");
     closeEditorialEditor();
   }
 
@@ -715,6 +765,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     updateRecipeEditorialFields({
       fermentation: nextFermentation
     });
+    expandSection("fermentation");
     closeEditorialEditor();
   }
 
@@ -737,6 +788,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     updateRecipeEditorialFields({
       baking: nextBaking
     });
+    expandSection("baking");
     closeEditorialEditor();
   }
 
@@ -758,6 +810,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     updateRecipeEditorialFields({
       yield: nextYield
     });
+    expandSection("yield");
     closeEditorialEditor();
   }
 
@@ -819,6 +872,300 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     );
   }
 
+  const editorialEditorSheet =
+    editorVisible === "preparation" ? (
+      <EditorialEditorSheet
+        onCancel={requestCloseEditorialEditor}
+        onClose={requestCloseEditorialEditor}
+        onSave={savePreparationDraft}
+        title="Preparacion"
+      >
+        <Text style={styles.helperText}>Carga los pasos en el orden de trabajo.</Text>
+        {preparationDraft.map((step, index) => (
+          <View key={`editor-step-${index}`} style={styles.editorCard}>
+            <View style={styles.editorCardHeader}>
+              <Text style={styles.editorCardTitle}>{`Paso ${index + 1}`}</Text>
+              <View style={styles.editorRowActions}>
+                <SmallEditorAction
+                  disabled={index === 0}
+                  label="↑"
+                  onPress={() =>
+                    setPreparationDraft((current) => moveListItem(current, index, "up"))
+                  }
+                />
+                <SmallEditorAction
+                  disabled={index === preparationDraft.length - 1}
+                  label="↓"
+                  onPress={() =>
+                    setPreparationDraft((current) => moveListItem(current, index, "down"))
+                  }
+                />
+                <SmallEditorAction
+                  label="Eliminar"
+                  onPress={() =>
+                    setPreparationDraft((current) => {
+                      const next = current.filter((_, currentIndex) => currentIndex !== index);
+                      return next.length ? next : [""];
+                    })
+                  }
+                />
+              </View>
+            </View>
+            <TextInput
+              multiline
+              onChangeText={(value) =>
+                setPreparationDraft((current) =>
+                  current.map((stepValue, currentIndex) =>
+                    currentIndex === index ? value : stepValue
+                  )
+                )
+              }
+              placeholder="Describe este paso"
+              placeholderTextColor={theme.colors.textMuted}
+              style={[styles.field, styles.notesField]}
+              textAlignVertical="top"
+              value={step}
+            />
+          </View>
+        ))}
+        <View style={styles.copyActionRow}>
+          <Pressable
+            onPress={() => setPreparationDraft((current) => [...current, ""])}
+            style={({ pressed }) => [styles.secondaryAction, pressed && styles.secondaryActionPressed]}
+          >
+            <Text style={styles.secondaryActionLabel}>Agregar paso</Text>
+          </Pressable>
+        </View>
+      </EditorialEditorSheet>
+    ) : editorVisible === "fermentation" ? (
+      <EditorialEditorSheet
+        onCancel={requestCloseEditorialEditor}
+        onClose={requestCloseEditorialEditor}
+        onSave={saveFermentationDraft}
+        title="Fermentacion"
+      >
+        <FieldLabel label="Indicaciones" />
+        <TextInput
+          multiline
+          onChangeText={(value) =>
+            setFermentationDraft((current) => ({ ...current, instructions: value }))
+          }
+          placeholder="Indicaciones generales de fermentacion"
+          placeholderTextColor={theme.colors.textMuted}
+          style={[styles.field, styles.notesField]}
+          textAlignVertical="top"
+          value={fermentationDraft.instructions}
+        />
+        <FieldLabel label="Criterio visual" />
+        <TextInput
+          multiline
+          onChangeText={(value) =>
+            setFermentationDraft((current) => ({ ...current, visualCue: value }))
+          }
+          placeholder="Hasta observar..."
+          placeholderTextColor={theme.colors.textMuted}
+          style={[styles.field, styles.notesField]}
+          textAlignVertical="top"
+          value={fermentationDraft.visualCue}
+        />
+        <View style={styles.inlineFields}>
+          <View style={styles.flex}>
+            <FieldLabel label="Tiempo minimo" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setFermentationDraft((current) => ({ ...current, timeMinMinutes: value }))
+              }
+              placeholder="60"
+              suffix="min"
+              value={fermentationDraft.timeMinMinutes}
+            />
+          </View>
+          <View style={styles.flex}>
+            <FieldLabel label="Tiempo maximo" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setFermentationDraft((current) => ({ ...current, timeMaxMinutes: value }))
+              }
+              placeholder="90"
+              suffix="min"
+              value={fermentationDraft.timeMaxMinutes}
+            />
+          </View>
+        </View>
+        <View style={styles.inlineFields}>
+          <View style={styles.flex}>
+            <FieldLabel label="Temperatura minima" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setFermentationDraft((current) => ({ ...current, temperatureMinC: value }))
+              }
+              placeholder="24"
+              suffix="°C"
+              value={fermentationDraft.temperatureMinC}
+            />
+          </View>
+          <View style={styles.flex}>
+            <FieldLabel label="Temperatura maxima" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setFermentationDraft((current) => ({ ...current, temperatureMaxC: value }))
+              }
+              placeholder="26"
+              suffix="°C"
+              value={fermentationDraft.temperatureMaxC}
+            />
+          </View>
+        </View>
+      </EditorialEditorSheet>
+    ) : editorVisible === "baking" ? (
+      <EditorialEditorSheet
+        onCancel={requestCloseEditorialEditor}
+        onClose={requestCloseEditorialEditor}
+        onSave={saveBakingDraft}
+        title="Horneado"
+      >
+        <View style={styles.inlineFields}>
+          <View style={styles.flex}>
+            <FieldLabel label="Temperatura minima" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setBakingDraft((current) => ({ ...current, temperatureMinC: value }))
+              }
+              placeholder="220"
+              suffix="°C"
+              value={bakingDraft.temperatureMinC}
+            />
+          </View>
+          <View style={styles.flex}>
+            <FieldLabel label="Temperatura maxima" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setBakingDraft((current) => ({ ...current, temperatureMaxC: value }))
+              }
+              placeholder="240"
+              suffix="°C"
+              value={bakingDraft.temperatureMaxC}
+            />
+          </View>
+        </View>
+        <View style={styles.inlineFields}>
+          <View style={styles.flex}>
+            <FieldLabel label="Tiempo minimo" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setBakingDraft((current) => ({ ...current, timeMinMinutes: value }))
+              }
+              placeholder="20"
+              suffix="min"
+              value={bakingDraft.timeMinMinutes}
+            />
+          </View>
+          <View style={styles.flex}>
+            <FieldLabel label="Tiempo maximo" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setBakingDraft((current) => ({ ...current, timeMaxMinutes: value }))
+              }
+              placeholder="30"
+              suffix="min"
+              value={bakingDraft.timeMaxMinutes}
+            />
+          </View>
+        </View>
+        <FieldLabel label="Indicaciones" />
+        <TextInput
+          multiline
+          onChangeText={(value) =>
+            setBakingDraft((current) => ({ ...current, instructions: value }))
+          }
+          placeholder="Hornear hasta obtener..."
+          placeholderTextColor={theme.colors.textMuted}
+          style={[styles.field, styles.notesField]}
+          textAlignVertical="top"
+          value={bakingDraft.instructions}
+        />
+      </EditorialEditorSheet>
+    ) : editorVisible === "yield" ? (
+      <EditorialEditorSheet
+        onCancel={requestCloseEditorialEditor}
+        onClose={requestCloseEditorialEditor}
+        onSave={saveYieldDraft}
+        title="Rendimiento"
+      >
+        <View style={styles.inlineFields}>
+          <View style={styles.flex}>
+            <FieldLabel label="Cantidad" />
+            <TextInput
+              keyboardType="decimal-pad"
+              onChangeText={(value) => setYieldDraft((current) => ({ ...current, quantity: value }))}
+              placeholder="3"
+              placeholderTextColor={theme.colors.textMuted}
+              style={styles.field}
+              value={yieldDraft.quantity}
+            />
+          </View>
+          <View style={styles.flex}>
+            <FieldLabel label="Unidad" />
+            <TextInput
+              onChangeText={(value) => setYieldDraft((current) => ({ ...current, unit: value }))}
+              placeholder="lactales"
+              placeholderTextColor={theme.colors.textMuted}
+              style={styles.field}
+              value={yieldDraft.unit}
+            />
+          </View>
+        </View>
+        <View style={styles.inlineFields}>
+          <View style={styles.flex}>
+            <FieldLabel label="Peso por unidad" />
+            <InputWithSuffix
+              keyboardType="decimal-pad"
+              onChangeText={(value) =>
+                setYieldDraft((current) => ({ ...current, weightPerUnit: value }))
+              }
+              placeholder="1000"
+              suffix={yieldDraft.weightUnit}
+              value={yieldDraft.weightPerUnit}
+            />
+          </View>
+          <View style={styles.flex}>
+            <FieldLabel label="Unidad de peso" />
+            <View style={styles.choiceRow}>
+              {(["g", "kg"] as const).map((unit) => (
+                <ChoiceButton
+                  active={yieldDraft.weightUnit === unit}
+                  key={unit}
+                  label={unit}
+                  onPress={() => setYieldDraft((current) => ({ ...current, weightUnit: unit }))}
+                />
+              ))}
+            </View>
+          </View>
+        </View>
+      </EditorialEditorSheet>
+    ) : editorVisible === "notes" ? (
+      <EditorialEditorSheet
+        onCancel={requestCloseEditorialEditor}
+        onClose={requestCloseEditorialEditor}
+        onSave={saveNotesDraft}
+        title="Notas"
+      >
+        <RichTextEditor
+          onChangeText={setNotesDraft}
+          placeholder="Agrega tips, variantes o aclaraciones"
+          value={notesDraft}
+        />
+      </EditorialEditorSheet>
+    ) : null;
+
   async function handleCopyExport(value: string, modeValue: "shareText" | "importCode") {
     const copied = await setClipboardText(value);
 
@@ -833,9 +1180,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     }, 1500);
   }
 
-  async function handleShareRecipeFile() {
+  async function handleShareRecipeFile(scope: RecipeShareScope) {
     try {
-      await shareCentenoRecipeFile(recipe);
+      await shareCentenoRecipeFile(recipe, scope);
       setExportMode(null);
     } catch (error) {
       if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
@@ -1083,7 +1430,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         <View style={styles.tabContent}>
           <EditorialSection
             actionLabel={preparationTabSections.preparation ? "Editar" : "Agregar"}
+            expanded={preparationSections.preparation}
             onPress={() => openEditorialEditor("preparation")}
+            onToggle={() => toggleSection("preparation")}
             title="Preparacion"
           >
             {preparationTabSections.preparation ? (
@@ -1101,7 +1450,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
           </EditorialSection>
           <EditorialSection
             actionLabel={preparationTabSections.fermentation ? "Editar" : "Agregar"}
+            expanded={preparationSections.fermentation}
             onPress={() => openEditorialEditor("fermentation")}
+            onToggle={() => toggleSection("fermentation")}
             title="Fermentacion"
           >
             {preparationTabSections.fermentation ? (
@@ -1122,7 +1473,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
           </EditorialSection>
           <EditorialSection
             actionLabel={preparationTabSections.baking ? "Editar" : "Agregar"}
+            expanded={preparationSections.baking}
             onPress={() => openEditorialEditor("baking")}
+            onToggle={() => toggleSection("baking")}
             title="Horneado"
           >
             {preparationTabSections.baking ? (
@@ -1140,7 +1493,9 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
           </EditorialSection>
           <EditorialSection
             actionLabel={recipe.yield ? "Editar" : "Agregar"}
+            expanded={preparationSections.yield}
             onPress={() => openEditorialEditor("yield")}
+            onToggle={() => toggleSection("yield")}
             title="Rendimiento"
           >
             {recipe.yield ? (
@@ -1179,7 +1534,12 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={ingredientVisible}
       >
-        <CenteredModalSheet>
+        <CenteredModalSheet
+          onBackdropPress={() => {
+            Keyboard.dismiss();
+            setIngredientVisible(false);
+          }}
+        >
           <Text style={styles.sheetTitle}>
             {editingIngredientId ? "Editar ingrediente" : "Anadir ingrediente"}
           </Text>
@@ -1298,343 +1658,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={editorVisible !== null}
       >
-        <CenteredModalSheet onBackdropPress={requestCloseEditorialEditor}>
-          {editorVisible === "preparation" ? (
-            <>
-              <Text style={styles.sheetTitle}>Preparacion</Text>
-              <Text style={styles.helperText}>Carga los pasos en el orden de trabajo.</Text>
-              {preparationDraft.map((step, index) => (
-                <View key={`editor-step-${index}`} style={styles.editorCard}>
-                  <View style={styles.editorCardHeader}>
-                    <Text style={styles.editorCardTitle}>{`Paso ${index + 1}`}</Text>
-                    <View style={styles.editorRowActions}>
-                      <SmallEditorAction
-                        disabled={index === 0}
-                        label="↑"
-                        onPress={() =>
-                          setPreparationDraft((current) => moveListItem(current, index, "up"))
-                        }
-                      />
-                      <SmallEditorAction
-                        disabled={index === preparationDraft.length - 1}
-                        label="↓"
-                        onPress={() =>
-                          setPreparationDraft((current) => moveListItem(current, index, "down"))
-                        }
-                      />
-                      <SmallEditorAction
-                        label="Eliminar"
-                        onPress={() =>
-                          setPreparationDraft((current) => {
-                            const next = current.filter((_, currentIndex) => currentIndex !== index);
-                            return next.length ? next : [""];
-                          })
-                        }
-                      />
-                    </View>
-                  </View>
-                  <TextInput
-                    multiline
-                    onChangeText={(value) =>
-                      setPreparationDraft((current) =>
-                        current.map((stepValue, currentIndex) =>
-                          currentIndex === index ? value : stepValue
-                        )
-                      )
-                    }
-                    placeholder="Describe este paso"
-                    placeholderTextColor={theme.colors.textMuted}
-                    style={[styles.field, styles.notesField]}
-                    textAlignVertical="top"
-                    value={step}
-                  />
-                </View>
-              ))}
-              <View style={styles.copyActionRow}>
-                <Pressable
-                  onPress={() => setPreparationDraft((current) => [...current, ""])}
-                  style={({ pressed }) => [styles.secondaryAction, pressed && styles.secondaryActionPressed]}
-                >
-                  <Text style={styles.secondaryActionLabel}>Agregar paso</Text>
-                </Pressable>
-              </View>
-              <View style={styles.sheetActions}>
-                <Pressable
-                  onPress={requestCloseEditorialEditor}
-                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-                >
-                  <Text style={styles.textActionLabel}>Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  onPress={savePreparationDraft}
-                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
-                >
-                  <Text style={styles.primaryActionLabel}>Guardar</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : null}
-
-          {editorVisible === "fermentation" ? (
-            <>
-              <Text style={styles.sheetTitle}>Fermentacion</Text>
-              <FieldLabel label="Indicaciones" />
-              <TextInput
-                multiline
-                onChangeText={(value) =>
-                  setFermentationDraft((current) => ({ ...current, instructions: value }))
-                }
-                placeholder="Indicaciones generales de fermentacion"
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.field, styles.notesField]}
-                textAlignVertical="top"
-                value={fermentationDraft.instructions}
-              />
-              <FieldLabel label="Criterio visual" />
-              <TextInput
-                multiline
-                onChangeText={(value) =>
-                  setFermentationDraft((current) => ({ ...current, visualCue: value }))
-                }
-                placeholder="Hasta observar..."
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.field, styles.notesField]}
-                textAlignVertical="top"
-                value={fermentationDraft.visualCue}
-              />
-              <View style={styles.inlineFields}>
-                <View style={styles.flex}>
-                  <FieldLabel label="Tiempo minimo" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setFermentationDraft((current) => ({ ...current, timeMinMinutes: value }))
-                    }
-                    placeholder="60"
-                    suffix="min"
-                    value={fermentationDraft.timeMinMinutes}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <FieldLabel label="Tiempo maximo" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setFermentationDraft((current) => ({ ...current, timeMaxMinutes: value }))
-                    }
-                    placeholder="90"
-                    suffix="min"
-                    value={fermentationDraft.timeMaxMinutes}
-                  />
-                </View>
-              </View>
-              <View style={styles.inlineFields}>
-                <View style={styles.flex}>
-                  <FieldLabel label="Temperatura minima" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setFermentationDraft((current) => ({ ...current, temperatureMinC: value }))
-                    }
-                    placeholder="24"
-                    suffix="°C"
-                    value={fermentationDraft.temperatureMinC}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <FieldLabel label="Temperatura maxima" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setFermentationDraft((current) => ({ ...current, temperatureMaxC: value }))
-                    }
-                    placeholder="26"
-                    suffix="°C"
-                    value={fermentationDraft.temperatureMaxC}
-                  />
-                </View>
-              </View>
-              <View style={styles.sheetActions}>
-                <Pressable
-                  onPress={requestCloseEditorialEditor}
-                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-                >
-                  <Text style={styles.textActionLabel}>Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  onPress={saveFermentationDraft}
-                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
-                >
-                  <Text style={styles.primaryActionLabel}>Guardar</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : null}
-
-          {editorVisible === "baking" ? (
-            <>
-              <Text style={styles.sheetTitle}>Horneado</Text>
-              <View style={styles.inlineFields}>
-                <View style={styles.flex}>
-                  <FieldLabel label="Temperatura minima" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setBakingDraft((current) => ({ ...current, temperatureMinC: value }))
-                    }
-                    placeholder="220"
-                    suffix="°C"
-                    value={bakingDraft.temperatureMinC}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <FieldLabel label="Temperatura maxima" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setBakingDraft((current) => ({ ...current, temperatureMaxC: value }))
-                    }
-                    placeholder="240"
-                    suffix="°C"
-                    value={bakingDraft.temperatureMaxC}
-                  />
-                </View>
-              </View>
-              <View style={styles.inlineFields}>
-                <View style={styles.flex}>
-                  <FieldLabel label="Tiempo minimo" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setBakingDraft((current) => ({ ...current, timeMinMinutes: value }))
-                    }
-                    placeholder="20"
-                    suffix="min"
-                    value={bakingDraft.timeMinMinutes}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <FieldLabel label="Tiempo maximo" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setBakingDraft((current) => ({ ...current, timeMaxMinutes: value }))
-                    }
-                    placeholder="30"
-                    suffix="min"
-                    value={bakingDraft.timeMaxMinutes}
-                  />
-                </View>
-              </View>
-              <FieldLabel label="Indicaciones" />
-              <TextInput
-                multiline
-                onChangeText={(value) =>
-                  setBakingDraft((current) => ({ ...current, instructions: value }))
-                }
-                placeholder="Hornear hasta obtener..."
-                placeholderTextColor={theme.colors.textMuted}
-                style={[styles.field, styles.notesField]}
-                textAlignVertical="top"
-                value={bakingDraft.instructions}
-              />
-              <View style={styles.sheetActions}>
-                <Pressable
-                  onPress={requestCloseEditorialEditor}
-                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-                >
-                  <Text style={styles.textActionLabel}>Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  onPress={saveBakingDraft}
-                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
-                >
-                  <Text style={styles.primaryActionLabel}>Guardar</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : null}
-
-          {editorVisible === "yield" ? (
-            <>
-              <Text style={styles.sheetTitle}>Rendimiento</Text>
-              <View style={styles.inlineFields}>
-                <View style={styles.flex}>
-                  <FieldLabel label="Cantidad" />
-                  <TextInput
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) => setYieldDraft((current) => ({ ...current, quantity: value }))}
-                    placeholder="3"
-                    placeholderTextColor={theme.colors.textMuted}
-                    style={styles.field}
-                    value={yieldDraft.quantity}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <FieldLabel label="Unidad" />
-                  <TextInput
-                    onChangeText={(value) => setYieldDraft((current) => ({ ...current, unit: value }))}
-                    placeholder="lactales"
-                    placeholderTextColor={theme.colors.textMuted}
-                    style={styles.field}
-                    value={yieldDraft.unit}
-                  />
-                </View>
-              </View>
-              <View style={styles.inlineFields}>
-                <View style={styles.flex}>
-                  <FieldLabel label="Peso por unidad" />
-                  <InputWithSuffix
-                    keyboardType="decimal-pad"
-                    onChangeText={(value) =>
-                      setYieldDraft((current) => ({ ...current, weightPerUnit: value }))
-                    }
-                    placeholder="1000"
-                    suffix={yieldDraft.weightUnit}
-                    value={yieldDraft.weightPerUnit}
-                  />
-                </View>
-                <View style={styles.flex}>
-                  <FieldLabel label="Unidad de peso" />
-                  <View style={styles.choiceRow}>
-                    {(["g", "kg"] as const).map((unit) => (
-                      <ChoiceButton
-                        active={yieldDraft.weightUnit === unit}
-                        key={unit}
-                        label={unit}
-                        onPress={() => setYieldDraft((current) => ({ ...current, weightUnit: unit }))}
-                      />
-                    ))}
-                  </View>
-                </View>
-              </View>
-              <View style={styles.sheetActions}>
-                <Pressable
-                  onPress={requestCloseEditorialEditor}
-                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-                >
-                  <Text style={styles.textActionLabel}>Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  onPress={saveYieldDraft}
-                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
-                >
-                  <Text style={styles.primaryActionLabel}>Guardar</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : null}
-
-          {editorVisible === "notes" ? (
-            <NotesEditorSheet
-              notesDraft={notesDraft}
-              onBackdropPress={requestCloseEditorialEditor}
-              onChangeText={setNotesDraft}
-              onClose={requestCloseEditorialEditor}
-              onSave={saveNotesDraft}
-            />
-          ) : null}
-        </CenteredModalSheet>
+        {editorialEditorSheet}
       </Modal>
 
       <Modal
@@ -1651,7 +1675,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 Elegi como queres compartir esta receta.
               </Text>
               <Pressable
-                onPress={() => setExportMode("shareText")}
+                onPress={() => openExportScope("text")}
                 style={({ pressed }) => [
                   styles.exportOption,
                   pressed && styles.menuActionPressed
@@ -1663,7 +1687,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 </Text>
               </Pressable>
               <Pressable
-                onPress={() => setExportMode("centenoFile")}
+                onPress={() => openExportScope("centeno")}
                 style={({ pressed }) => [
                   styles.exportOption,
                   pressed && styles.menuActionPressed
@@ -1675,7 +1699,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 </Text>
               </Pressable>
               <Pressable
-                onPress={() => setExportMode("importCode")}
+                onPress={() => openExportScope("json")}
                 style={({ pressed }) => [
                   styles.exportOption,
                   pressed && styles.menuActionPressed
@@ -1697,12 +1721,36 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
             </>
           ) : null}
 
-          {exportMode === "centenoFile" ? (
+          {exportMode === "scope" ? (
             <>
-              <Text style={styles.sheetTitle}>Compartir archivo CENTENO</Text>
+              <Text style={styles.sheetTitle}>¿Que queres compartir?</Text>
               <Text style={styles.helperText}>
-                Se va a crear un archivo .centeno para importarlo en otra instalacion de CENTENO.
+                Elegi cuanta informacion incluir.
               </Text>
+              <Pressable
+                onPress={() => handleShareScope("formula")}
+                style={({ pressed }) => [
+                  styles.exportOption,
+                  pressed && styles.menuActionPressed
+                ]}
+              >
+                <Text style={styles.exportOptionTitle}>Solo receta</Text>
+                <Text style={styles.exportOptionDescription}>
+                  Ingredientes, cantidades, porcentajes y formula.
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => handleShareScope("complete")}
+                style={({ pressed }) => [
+                  styles.exportOption,
+                  pressed && styles.menuActionPressed
+                ]}
+              >
+                <Text style={styles.exportOptionTitle}>Receta completa</Text>
+                <Text style={styles.exportOptionDescription}>
+                  Incluye preparacion, fermentacion, horneado, rendimiento y notas.
+                </Text>
+              </Pressable>
               <View style={styles.sheetActions}>
                 <Pressable
                   onPress={() => setExportMode("selector")}
@@ -1711,10 +1759,10 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                   <Text style={styles.textActionLabel}>Volver</Text>
                 </Pressable>
                 <Pressable
-                  onPress={handleShareRecipeFile}
-                  style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
+                  onPress={() => setExportMode(null)}
+                  style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
                 >
-                  <Text style={styles.primaryActionLabel}>Compartir archivo</Text>
+                  <Text style={styles.textActionLabel}>Cancelar</Text>
                 </Pressable>
               </View>
             </>
@@ -1749,7 +1797,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               />
               <View style={styles.sheetActions}>
                 <Pressable
-                  onPress={() => setExportMode("selector")}
+                  onPress={() => setExportMode("scope")}
                   style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
                 >
                   <Text style={styles.textActionLabel}>Volver</Text>
@@ -1793,7 +1841,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               />
               <View style={styles.sheetActions}>
                 <Pressable
-                  onPress={() => setExportMode("selector")}
+                  onPress={() => setExportMode("scope")}
                   style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
                 >
                   <Text style={styles.textActionLabel}>Volver</Text>
@@ -1912,7 +1960,12 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={scaleVisible}
       >
-        <CenteredModalSheet>
+        <CenteredModalSheet
+          onBackdropPress={() => {
+            Keyboard.dismiss();
+            setScaleVisible(false);
+          }}
+        >
           <Text style={styles.sheetTitle}>Ajustar receta</Text>
           <ScaleOption
             active={mode === "flour"}
@@ -2008,7 +2061,12 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         transparent
         visible={prefermentVisible}
       >
-        <CenteredModalSheet>
+        <CenteredModalSheet
+          onBackdropPress={() => {
+            Keyboard.dismiss();
+            setPrefermentVisible(false);
+          }}
+        >
           <Text style={styles.sheetTitle}>Agregar prefermento</Text>
           <View style={styles.prefermentList}>
             {prefermentRecipes.map((item) => (
@@ -2196,65 +2254,6 @@ function CenteredModalSheet({
   );
 }
 
-function NotesEditorSheet({
-  notesDraft,
-  onBackdropPress,
-  onChangeText,
-  onClose,
-  onSave
-}: {
-  notesDraft: string;
-  onBackdropPress: () => void;
-  onChangeText: (value: string) => void;
-  onClose: () => void;
-  onSave: () => void;
-}) {
-  return (
-    <Pressable onPress={onBackdropPress} style={styles.centeredBackdrop}>
-      <KeyboardAvoidingView
-        behavior={Platform.select({ ios: "padding", android: "height" })}
-        pointerEvents="box-none"
-        style={styles.centeredBackdropContent}
-      >
-        <Pressable onPress={() => {}} style={styles.notesEditorSheet}>
-          <View style={styles.notesEditorHeader}>
-            <Text style={styles.sheetTitle}>Notas</Text>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-            >
-              <Text style={styles.textActionLabel}>Cerrar</Text>
-            </Pressable>
-          </View>
-          <View style={styles.notesEditorBody}>
-            <RichTextEditor
-              containerStyle={styles.notesEditorContainer}
-              minHeight={320}
-              onChangeText={onChangeText}
-              placeholder="Agrega tips, variantes o aclaraciones"
-              value={notesDraft}
-            />
-          </View>
-          <View style={styles.notesEditorFooter}>
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.textAction, pressed && styles.textActionPressed]}
-            >
-              <Text style={styles.textActionLabel}>Cancelar</Text>
-            </Pressable>
-            <Pressable
-              onPress={onSave}
-              style={({ pressed }) => [styles.primaryAction, pressed && styles.primaryActionPressed]}
-            >
-              <Text style={styles.primaryActionLabel}>Guardar</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Pressable>
-  );
-}
-
 function RecipeTabButton({
   active,
   icon,
@@ -2288,18 +2287,37 @@ function RecipeTabButton({
 function EditorialSection({
   actionLabel,
   children,
+  expanded,
   onPress,
+  onToggle,
   title
 }: {
   actionLabel: string;
   children: ReactNode;
+  expanded?: boolean;
   onPress: () => void;
+  onToggle?: () => void;
   title: string;
 }) {
+  const collapsible = onToggle !== undefined && expanded !== undefined;
+
   return (
     <View style={styles.detailSection}>
       <View style={styles.detailSectionHeader}>
-        <Text style={styles.detailSectionTitle}>{title}</Text>
+        {collapsible ? (
+          <Pressable
+            accessibilityLabel={`${expanded ? "Contraer" : "Expandir"} ${title}`}
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            onPress={onToggle}
+            style={({ pressed }) => [styles.sectionHeaderToggle, pressed && styles.chipPressed]}
+          >
+            <Text style={styles.sectionChevron}>{expanded ? "▼" : "▶"}</Text>
+            <Text style={styles.detailSectionTitle}>{title}</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.detailSectionTitle}>{title}</Text>
+        )}
         <Pressable
           accessibilityLabel={`${actionLabel} ${title}`}
           onPress={onPress}
@@ -2308,7 +2326,7 @@ function EditorialSection({
           <Text style={styles.sectionActionText}>{actionLabel}</Text>
         </Pressable>
       </View>
-      {children}
+      {collapsible && !expanded ? null : children}
     </View>
   );
 }
@@ -2711,6 +2729,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between"
   },
+  sectionHeaderToggle: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "flex-start",
+    minHeight: 34,
+    paddingVertical: 4
+  },
+  sectionChevron: {
+    color: theme.colors.accentDeep,
+    fontSize: 12,
+    lineHeight: 20,
+    marginTop: 2
+  },
   detailSectionTitle: {
     color: theme.colors.text,
     fontSize: 15,
@@ -2831,41 +2865,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 20,
     width: "92%"
-  },
-  notesEditorSheet: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
-    borderRadius: 20,
-    borderWidth: 1,
-    elevation: 6,
-    height: "88%",
-    maxWidth: 560,
-    padding: theme.spacing.lg,
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    width: "96%"
-  },
-  notesEditorHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: theme.spacing.xs
-  },
-  notesEditorBody: {
-    flex: 1,
-    paddingTop: theme.spacing.xs
-  },
-  notesEditorContainer: {
-    flex: 1
-  },
-  notesEditorFooter: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: theme.spacing.sm,
-    justifyContent: "flex-end",
-    paddingTop: theme.spacing.sm
   },
   sheetScrollContent: {
     flexGrow: 1
