@@ -56,7 +56,7 @@ const guideSteps: GuideStep[] = [
     icon: "Home",
     title: "Home y recetas",
     body:
-      "En la pantalla principal vas a ver tus recetas ordenadas alfabeticamente. Toca una receta para abrirla o mantenela presionada para ver acciones rapidas como duplicar, exportar, editar o eliminar.",
+      "En la pantalla principal vas a ver tus recetas ordenadas alfabeticamente. Usa la barra de busqueda para encontrar recetas por nombre. Toca una receta para abrirla o mantenela presionada para ver acciones rapidas como duplicar, exportar, editar o eliminar.",
     targetKey: "recipeList"
   },
   {
@@ -70,7 +70,7 @@ const guideSteps: GuideStep[] = [
     icon: "Nueva",
     title: "Crear una receta",
     body:
-      "Toca Nueva receta para crear una formula. Podes definir nombre, descripcion, tipo de receta y si queres que pueda usarse como prefermento.",
+      "Toca Nueva receta para crear una formula. Podes definir nombre, tipo de receta (Panaderia o Pasteleria) y si queres que pueda usarse como prefermento.",
     targetKey: "newRecipeFab"
   },
   {

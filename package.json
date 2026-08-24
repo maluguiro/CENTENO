@@ -12,7 +12,8 @@
     "validate:baker": "tsx src/lib/baker.validation.ts",
     "validate:recipes": "tsx src/lib/recipeImportExport.validation.ts",
     "validate:preparation-sections": "tsx src/lib/preparationSections.validation.ts",
-    "validate:seed": "tsx src/lib/seed.validation.ts"
+    "validate:seed": "tsx src/lib/seed.validation.ts",
+    "validate:richtext": "tsx src/lib/richText.validation.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

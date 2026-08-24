@@ -151,7 +151,7 @@ function hasUniformMark(document: RichTextDocument, selection: RichTextSelection
 
 function getActiveMarksAt(document: RichTextDocument, index: number) {
   return markOrder.filter((mark) =>
-    document.spans.some((span) => span.mark === mark && span.start <= index && span.end >= index)
+    document.spans.some((span) => span.mark === mark && span.start <= index && span.end > index)
   );
 }
 

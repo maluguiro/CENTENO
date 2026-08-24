@@ -164,7 +164,14 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
       return { recipes: [normalizeRecipe(action.payload), ...state.recipes] };
     }
     case "importMany": {
-      return { recipes: [...action.payload.map(normalizeRecipe), ...state.recipes] };
+      const incomingById = new Map(action.payload.map((recipe) => [recipe.id, recipe]));
+      const replaced = state.recipes.map((recipe) =>
+        incomingById.get(recipe.id) ?? recipe
+      );
+      const newRecipes = action.payload.filter(
+        (recipe) => !state.recipes.some((existing) => existing.id === recipe.id)
+      );
+      return { recipes: [...newRecipes.map(normalizeRecipe), ...replaced.map(normalizeRecipe)] };
     }
     case "restoreSamples": {
       return {

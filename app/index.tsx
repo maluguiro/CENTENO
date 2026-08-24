@@ -25,15 +25,16 @@ import {
 } from "@/components/GuideModal";
 import { setClipboardText } from "@/lib/clipboard";
 import { getGuideSeen, setGuideSeen } from "@/lib/guideStorage";
-import { pickCentenoRecipeFileContent, shareCentenoRecipeFile } from "@/lib/recipeFileShare";
+import { pickCentenoRecipeFileContent, shareCentenoRecipeFile, shareCentenoRecipesBackupFile } from "@/lib/recipeFileShare";
 import {
   exportRecipeToJson,
-  parseImportedRecipe,
+  parseImportedCentenoFile,
   prepareImportedRecipe,
   type RecipeShareScope
 } from "@/lib/recipeImportExport";
 import { getClipboardText } from "@/lib/clipboard";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
+import { buildDuplicateRecipeName } from "@/lib/recipeFields";
 import { Screen } from "@/components/Screen";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
@@ -67,27 +68,6 @@ function getBaseRecipeIngredients() {
   ];
 }
 
-function normalizeRecipeName(value: string) {
-  return value.trim().toLocaleLowerCase("es");
-}
-
-function buildDuplicateRecipeName(name: string, recipes: Recipe[]) {
-  const baseName = name.trim();
-  const existingNames = new Set(recipes.map((recipe) => normalizeRecipeName(recipe.name)));
-
-  const firstCandidate = `${baseName} (copia)`;
-  if (!existingNames.has(normalizeRecipeName(firstCandidate))) {
-    return firstCandidate;
-  }
-
-  let index = 2;
-  while (existingNames.has(normalizeRecipeName(`${baseName} (copia ${index})`))) {
-    index += 1;
-  }
-
-  return `${baseName} (copia ${index})`;
-}
-
 type HomeExportFormat = "centeno" | "text" | "json";
 type HomeExportMode = "selector" | "scope" | "shareText" | "importCode" | null;
 type HomeImportMode = "selector" | "backupCode";
@@ -99,6 +79,7 @@ export default function HomeScreen() {
     deleteAllRecipes,
     deleteRecipe,
     importRecipe,
+    importRecipes,
     isReady,
     recipes,
     restoreSampleRecipes,
@@ -300,12 +281,20 @@ export default function HomeScreen() {
 
   function handleImportRecipe() {
     try {
-      const parsedRecipe = parseImportedRecipe(importInput);
-      const preparedRecipe = prepareImportedRecipe(parsedRecipe, recipes);
+      const result = parseImportedCentenoFile(importInput, recipes);
 
-      importRecipe(preparedRecipe);
+      if (result.type === "backup") {
+        importRecipes(result.recipes);
+      } else {
+        importRecipe(result.recipes[0]);
+      }
+
       closeImportModal();
-      Alert.alert("Receta importada correctamente.");
+      Alert.alert(
+        result.type === "backup"
+          ? `${result.recipes.length} receta(s) importada(s) correctamente.`
+          : "Receta importada correctamente."
+      );
     } catch {
       setImportError(
         "No se pudo importar la receta. Asegurate de pegar el codigo completo para importar."
@@ -483,12 +472,20 @@ export default function HomeScreen() {
         return;
       }
 
-      const parsedRecipe = parseImportedRecipe(result.content);
-      const preparedRecipe = prepareImportedRecipe(parsedRecipe, recipes);
+      const parsed = parseImportedCentenoFile(result.content, recipes);
 
-      importRecipe(preparedRecipe);
+      if (parsed.type === "backup") {
+        importRecipes(parsed.recipes);
+      } else {
+        importRecipe(parsed.recipes[0]);
+      }
+
       closeImportModal();
-      Alert.alert("Receta importada correctamente.");
+      Alert.alert(
+        parsed.type === "backup"
+          ? `${parsed.recipes.length} receta(s) importada(s) correctamente.`
+          : "Receta importada correctamente."
+      );
     } catch {
       setImportError(
         "No se pudo importar el archivo. Asegurate de elegir un archivo exportado desde CENTENO."
@@ -557,6 +554,26 @@ export default function HomeScreen() {
         }
       ]
     );
+  }
+
+  async function handleExportAllRecipes() {
+    setSettingsVisible(false);
+
+    if (!recipes.length) {
+      Alert.alert("No hay recetas para exportar.");
+      return;
+    }
+
+    try {
+      await shareCentenoRecipesBackupFile(recipes);
+    } catch (error) {
+      if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
+        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
+        return;
+      }
+
+      Alert.alert("No se pudo crear el archivo de respaldo.");
+    }
   }
 
   return (
@@ -853,12 +870,12 @@ export default function HomeScreen() {
                       ]}
                     >
                       <Text style={styles.secondaryFilledActionLabel}>
-                        {quickCopyFeedback === "shareText" ? "Copiado ?" : "Copiar"}
+                        {quickCopyFeedback === "shareText" ? "Copiado \u2713" : "Copiar"}
                       </Text>
                     </Pressable>
                   </View>
                   <TextInput
-                    editable
+                    editable={false}
                     multiline
                     placeholderTextColor={theme.colors.textMuted}
                     style={[styles.modalInput, styles.importField]}
@@ -897,12 +914,12 @@ export default function HomeScreen() {
                       ]}
                     >
                       <Text style={styles.secondaryFilledActionLabel}>
-                        {quickCopyFeedback === "importCode" ? "Copiado ?" : "Copiar"}
+                        {quickCopyFeedback === "importCode" ? "Copiado \u2713" : "Copiar"}
                       </Text>
                     </Pressable>
                   </View>
                   <TextInput
-                    editable
+                    editable={false}
                     multiline
                     placeholderTextColor={theme.colors.textMuted}
                     style={[styles.modalInput, styles.importField]}
@@ -952,6 +969,15 @@ export default function HomeScreen() {
                 style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
               >
                 <Text style={styles.toolActionTitle}>Importar receta</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleExportAllRecipes}
+                style={({ pressed }) => [styles.toolAction, pressed && styles.toolActionPressed]}
+              >
+                <Text style={styles.toolActionTitle}>Exportar todas las recetas</Text>
+                <Text style={styles.toolActionDescription}>
+                  Crea un respaldo completo de tu recetario.
+                </Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -1572,6 +1598,11 @@ const styles = StyleSheet.create({
   },
   toolActionDanger: {
     color: theme.colors.danger
+  },
+  toolActionDescription: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 2
   },
   exportOption: {
     backgroundColor: theme.colors.surface,

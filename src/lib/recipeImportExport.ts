@@ -409,8 +409,18 @@ export function importRecipesFromJson(payload: unknown, existingRecipes: Recipe[
   for (const recipe of importedRecipes) {
     const existingSameId = existingById.get(recipe.id);
 
-    if (existingSameId && areRecipesEquivalent(existingSameId, recipe)) {
+    if (existingSameId) {
       sourceIdToFinalId.set(recipe.id, existingSameId.id);
+
+      recipesToImport.push({
+        ...recipe,
+        id: existingSameId.id,
+        ...normalizeRecipeMetadata(recipe),
+        category: recipe.category ?? "bakery",
+        createdAt: normalizeString(recipe.createdAt) || existingSameId.createdAt,
+        updatedAt: now
+      });
+
       continue;
     }
 
@@ -421,10 +431,7 @@ export function importRecipesFromJson(payload: unknown, existingRecipes: Recipe[
       finalId = makeId();
     }
 
-    if (
-      reservedNames.has(normalizeNameKey(finalName)) &&
-      (!existingSameId || normalizeNameKey(existingSameId.name) !== normalizeNameKey(finalName))
-    ) {
+    if (reservedNames.has(normalizeNameKey(finalName))) {
       finalName = getUniqueImportedName(finalName, existingRecipes, reservedNames);
     }
 

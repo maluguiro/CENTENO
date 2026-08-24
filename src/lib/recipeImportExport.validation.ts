@@ -649,8 +649,12 @@ function runRecipeValidation() {
     [baseRecipe]
   );
   assert(
-    identicalMerge.length === 0,
-    "Si el backup trae la misma receta por id y contenido, no debe duplicarla."
+    identicalMerge.length === 1,
+    "Reimportar backup con misma receta por id debe reemplazar (no duplicar)."
+  );
+  assert(
+    identicalMerge[0].id === baseRecipe.id,
+    "La receta reemplazada debe conservar el mismo id."
   );
 
   const conflictingIdRecipe: Recipe = {
@@ -668,14 +672,14 @@ function runRecipeValidation() {
     JSON.parse(exportRecipesToJson([conflictingIdRecipe])),
     [baseRecipe]
   );
-  assert(conflictingIdMerge.length === 1, "El conflicto de id con contenido distinto debe importar una copia.");
+  assert(conflictingIdMerge.length === 1, "El backup con mismo id debe reemplazar la receta existente.");
   assert(
-    conflictingIdMerge[0].id !== baseRecipe.id,
-    "El conflicto de id con contenido distinto debe generar nuevo id."
+    conflictingIdMerge[0].id === baseRecipe.id,
+    "El reemplazo por id debe conservar el id original."
   );
   assert(
-    conflictingIdMerge[0].name === baseRecipe.name,
-    "El conflicto de id distinto puede conservar el nombre si no hay otro conflicto adicional."
+    conflictingIdMerge[0].notes === "Version modificada",
+    "El reemplazo debe traer el contenido del backup."
   );
 
   const sameNameDifferentId: Recipe = {
@@ -702,12 +706,14 @@ function runRecipeValidation() {
   );
   assert(
     mergeKeepsExisting.length === 1,
-    "Importar backup no debe borrar recetas locales existentes."
+    "importRecipesFromJson solo devuelve recetas del backup (el reducer combina con existentes)."
   );
+  const mergedBase = mergeKeepsExisting.find((r) => r.id === baseRecipe.id);
   assert(
-    mergeKeepsExisting[0].ingredients[0].role === "flour" &&
-      mergeKeepsExisting[0].ingredients[0].quantity === 500 &&
-      mergeKeepsExisting[0].ingredients[0].bakerPercentage === 100,
+    mergedBase &&
+      mergedBase.ingredients[0].role === "flour" &&
+      mergedBase.ingredients[0].quantity === 500 &&
+      mergedBase.ingredients[0].bakerPercentage === 100,
     "El backup debe conservar roles, cantidades y porcentajes."
   );
 
@@ -726,8 +732,8 @@ function runRecipeValidation() {
   };
   const sameIdConflictImported = importRecipesFromJson(sameIdConflictBackup, [prefermentRecipe]);
   assert(
-    sameIdConflictImported.length === 1,
-    "El backup con conflicto de id igual y contenido igual debe omitir duplicados."
+    sameIdConflictImported.length === 2,
+    "El backup con conflicto de id debe reemplazar existente y agregar nuevo."
   );
 
   assertThrows(
@@ -1130,6 +1136,71 @@ function runRecipeValidation() {
   assert(
     mergedAgain.length === mergedSamples.length,
     "Restaurar samples no debe duplicar recetas existentes."
+  );
+
+  const backupPayload2 = JSON.parse(
+    exportRecipesToJson([prefermentRecipe, parentRecipe])
+  ) as ReturnType<typeof JSON.parse>;
+
+  const firstImport = importRecipesFromJson(backupPayload2, []);
+  assert(firstImport.length === 2, "Primera importacion de backup debe crear 2 recetas.");
+
+  const secondImport = importRecipesFromJson(backupPayload2, firstImport);
+  assert(
+    secondImport.length === 2,
+    "Segunda importacion del mismo backup debe reemplazar (no duplicar)."
+  );
+
+  const importedPreferment2 = secondImport.find((r) => r.name === prefermentRecipe.name);
+  const importedParent2 = secondImport.find((r) => r.name === parentRecipe.name);
+  assert(importedPreferment2 && importedParent2, "Reimport debe conservar ambas recetas.");
+  assert(
+    importedParent2!.ingredients.find((i) => i.role === "preferment")?.linkedRecipeId ===
+      importedPreferment2!.id,
+    "Reimport debe preservar vinculo prefermento."
+  );
+
+  const backupWithPrep = {
+    ...prefermentRecipe,
+    preparation: { steps: ["Mezclar", "Fermentar"] },
+    fermentation: { instructions: "12h a 4C", timeHours: 12, temperatureMinC: 4 },
+    baking: { instructions: "Hornear 25 min", timeMinutes: 25, temperatureMinC: 220 },
+    yield: { quantity: 1, unit: "lote", weightPerUnit: 600, weightUnit: "g" as const },
+    notes: "Tips de prefermento."
+  };
+  const backupWithEditorial = JSON.parse(
+    exportRecipesToJson([backupWithPrep])
+  );
+  const importedEditorial = importRecipesFromJson(backupWithEditorial, []);
+  assert(
+    importedEditorial[0].preparation?.steps.length === 2,
+    "Backup completo debe conservar preparation."
+  );
+  assert(
+    importedEditorial[0].fermentation?.instructions === "12h a 4C",
+    "Backup completo debe conservar fermentation."
+  );
+  assert(
+    importedEditorial[0].baking?.instructions === "Hornear 25 min",
+    "Backup completo debe conservar baking."
+  );
+  assert(
+    importedEditorial[0].yield?.quantity === 1,
+    "Backup completo debe conservar yield."
+  );
+  assert(
+    importedEditorial[0].notes === "Tips de prefermento.",
+    "Backup completo debe conservar notes."
+  );
+
+  const snapshotForNoMutate = JSON.stringify(baseRecipe);
+  exportRecipesToJson([baseRecipe]);
+  exportRecipeToJson(baseRecipe);
+  formatRecipeAsShareText(baseRecipe, [], "complete");
+  formatRecipeAsShareText(baseRecipe, [], "formula");
+  assert(
+    JSON.stringify(baseRecipe) === snapshotForNoMutate,
+    "Exportar no debe mutar la receta original."
   );
 
   console.log("recipe import/export validation passed");

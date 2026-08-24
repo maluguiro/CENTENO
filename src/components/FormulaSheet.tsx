@@ -48,7 +48,8 @@ import {
   cloneRecipeMetadata,
   formatBakingSummary,
   formatFermentationSummary,
-  formatYieldSummary
+  formatYieldSummary,
+  buildDuplicateRecipeName
 } from "@/lib/recipeFields";
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { shareCentenoRecipeFile } from "@/lib/recipeFileShare";
@@ -627,7 +628,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     const metadata = cloneRecipeMetadata(recipe);
 
     const duplicatedId = createRecipe({
-      name: `${recipe.name} copia`,
+      name: buildDuplicateRecipeName(recipe.name, recipes),
       ...metadata,
       category: recipe.category ?? "bakery",
       useAsPreferment: recipe.useAsPreferment ?? false,
@@ -1311,6 +1312,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
         <View style={styles.toolbar}>
           <View style={styles.headerLeft}>
             <Pressable
+              accessibilityLabel="Volver"
               onPress={() => router.back()}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             >
@@ -1322,6 +1324,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
           </View>
           <View style={styles.headerActions}>
             <Pressable
+              accessibilityLabel="Agregar ingrediente"
               onPress={() => openAddIngredient()}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             >
@@ -1335,6 +1338,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               <Text style={styles.editIcon}>{"\u270E"}</Text>
             </Pressable>
             <Pressable
+              accessibilityLabel="Menu"
               onPress={() => setMenuVisible(true)}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             >
@@ -1783,7 +1787,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                   ]}
                 >
                   <Text style={styles.secondaryActionLabel}>
-                    {copyFeedback === "shareText" ? "Copiado ?" : "Copiar"}
+                    {copyFeedback === "shareText" ? "Copiado \u2713" : "Copiar"}
                   </Text>
                 </Pressable>
               </View>
@@ -1827,7 +1831,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                   ]}
                 >
                   <Text style={styles.secondaryActionLabel}>
-                    {copyFeedback === "importCode" ? "Copiado ?" : "Copiar"}
+                    {copyFeedback === "importCode" ? "Copiado \u2713" : "Copiar"}
                   </Text>
                 </Pressable>
               </View>
@@ -2390,6 +2394,7 @@ function ChoiceButton({
 }) {
   return (
     <Pressable
+      accessibilityState={{ selected: active }}
       onPress={onPress}
       style={({ pressed }) => [
         styles.choiceButton,
@@ -2570,9 +2575,9 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: "center",
-    height: 34,
+    height: 44,
     justifyContent: "center",
-    width: 34
+    width: 44
   },
   iconButtonPressed: {
     opacity: theme.interaction.pressedOpacity
@@ -2704,9 +2709,9 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     borderRadius: 999,
     borderWidth: 1,
-    height: 22,
+    height: 34,
     justifyContent: "center",
-    width: 22
+    width: 34
   },
   helpChipText: {
     color: theme.colors.textMuted,

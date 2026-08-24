@@ -193,6 +193,27 @@ export function hasBaking(baking?: RecipeBaking) {
   );
 }
 
+function normalizeRecipeNameForDuplicate(value: string) {
+  return value.trim().toLocaleLowerCase("es");
+}
+
+export function buildDuplicateRecipeName(name: string, recipes: Recipe[]) {
+  const baseName = name.trim();
+  const existingNames = new Set(recipes.map((recipe) => normalizeRecipeNameForDuplicate(recipe.name)));
+
+  const firstCandidate = `${baseName} (copia)`;
+  if (!existingNames.has(normalizeRecipeNameForDuplicate(firstCandidate))) {
+    return firstCandidate;
+  }
+
+  let index = 2;
+  while (existingNames.has(normalizeRecipeNameForDuplicate(`${baseName} (copia ${index})`))) {
+    index += 1;
+  }
+
+  return `${baseName} (copia ${index})`;
+}
+
 export function hasYieldData(yieldData?: RecipeYield) {
   return Boolean(
     yieldData &&
