@@ -12,6 +12,7 @@ type IngredientRowProps = {
   onBreakdownHelpPress?: () => void;
   prefermentBreakdown?: PrefermentBreakdown | null;
   quantityDetail?: string | null;
+  displayName?: string;
   quantityWarning?: string | null;
   quantityOverride?: number | null;
 };
@@ -22,6 +23,7 @@ export function IngredientRow({
   onBreakdownHelpPress,
   prefermentBreakdown,
   quantityDetail,
+  displayName,
   quantityOverride,
   quantityWarning
 }: IngredientRowProps) {
@@ -38,7 +40,7 @@ export function IngredientRow({
         <View style={styles.nameRow}>
           <RoleMarker role={ingredient.role} />
           <Text numberOfLines={1} style={styles.name}>
-            {ingredient.name}
+            {displayName ?? ingredient.name}
           </Text>
         </View>
         <View style={styles.metaRow}>

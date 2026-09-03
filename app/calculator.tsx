@@ -3,12 +3,14 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
 import { getRecipeSummary, getScaledDoughWeight, scaleIngredients } from "@/lib/baker";
+import { getLinkedRecipeDisplayName } from "@/lib/linkedRecipeDisplayName";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
 
 export default function CalculatorScreen() {
   const { recipes } = useRecipes();
-  const recipeLookup = (recipeId: string) => recipes.find((recipe) => recipe.id === recipeId);
+  const recipeLookupById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  const recipeLookup = (recipeId: string) => recipeLookupById.get(recipeId);
   const [selectedId, setSelectedId] = useState(recipes[0]?.id ?? "");
   const selectedRecipe = recipes.find((recipe) => recipe.id === selectedId) ?? recipes[0];
   const [flourTarget, setFlourTarget] = useState(
@@ -85,7 +87,8 @@ export default function CalculatorScreen() {
           scaled.map((ingredient) => (
             <View key={ingredient.id} style={styles.resultRow}>
               <Text style={styles.resultName}>
-                {ingredient.name} ({ingredient.role} - {ingredient.bakerPercentage}%)
+                {getLinkedRecipeDisplayName(ingredient, recipeLookupById)} ({ingredient.role} -{" "}
+                {ingredient.bakerPercentage}%)
               </Text>
               <Text style={styles.resultQty}>
                 {ingredient.scaledQuantity} {ingredient.unit}

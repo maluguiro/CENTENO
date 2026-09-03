@@ -17,6 +17,7 @@ import {
 import { buildCentenoBackupFileName, buildCentenoFileName } from "@/lib/recipeFileShare";
 import { canMoveIngredient, getPrimaryFlourIndex, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
+import { getLinkedRecipeDisplayName } from "@/lib/linkedRecipeDisplayName";
 import { sampleRecipes } from "@/data/sampleRecipes";
 import {
   parseRichTextDocument,
@@ -253,6 +254,43 @@ const parentRecipe: Recipe = {
 };
 
 function runRecipeValidation() {
+  const renamedPreferment: Recipe = {
+    ...prefermentRecipe,
+    name: "MM centeno 60%"
+  };
+  const linkedPrefermentIngredient = parentRecipe.ingredients.find(
+    (ingredient) => ingredient.role === "preferment"
+  )!;
+  const linkedRecipeLookup = new Map([[renamedPreferment.id, renamedPreferment]]);
+
+  assert(
+    getLinkedRecipeDisplayName(linkedPrefermentIngredient, linkedRecipeLookup) === "MM centeno 60%",
+    "El nombre visible debe usar el nombre actual de la receta vinculada."
+  );
+  assert(
+    getLinkedRecipeDisplayName(linkedPrefermentIngredient, new Map()) === "Masa madre 60",
+    "Si el vinculo falta, el nombre visible debe usar linkedRecipeName como fallback."
+  );
+  assert(
+    getLinkedRecipeDisplayName(
+      { ...linkedPrefermentIngredient, linkedRecipeName: undefined },
+      new Map()
+    ) === "Pasta madre",
+    "Si no hay linkedRecipeName, el nombre visible debe usar el nombre del ingrediente."
+  );
+  assert(
+    getLinkedRecipeDisplayName(
+      { ...linkedPrefermentIngredient, role: "other", linkedRecipeName: undefined },
+      linkedRecipeLookup
+    ) === "Pasta madre",
+    "Un ingrediente sin vinculo prefermento debe conservar su nombre manual."
+  );
+  const renamedShareText = formatRecipeAsShareText(parentRecipe, [renamedPreferment]);
+  assert(
+    renamedShareText.includes("MM centeno 60%") && !renamedShareText.includes("• Pasta madre —"),
+    "El texto compartido debe usar el nombre actual del prefermento vinculado."
+  );
+
   const exported = exportRecipeToJson(baseRecipe);
   const parsedPayload = JSON.parse(exported) as { type: string; version: number; recipe: Recipe };
 

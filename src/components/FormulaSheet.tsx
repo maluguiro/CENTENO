@@ -52,6 +52,7 @@ import {
   buildDuplicateRecipeName
 } from "@/lib/recipeFields";
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
+import { getLinkedRecipeDisplayName } from "@/lib/linkedRecipeDisplayName";
 import { shareCentenoRecipeFile } from "@/lib/recipeFileShare";
 import { exportRecipeToJson, type RecipeShareScope } from "@/lib/recipeImportExport";
 import { canMoveIngredient, moveIngredientInList } from "@/lib/recipeOrder";
@@ -1403,6 +1404,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
 
               return (
                 <IngredientRow
+                  displayName={getLinkedRecipeDisplayName(ingredient, recipeLookup)}
                   ingredient={ingredient}
                   key={ingredient.id}
                   onBreakdownHelpPress={

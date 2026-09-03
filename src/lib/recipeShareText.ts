@@ -19,6 +19,7 @@ import {
   hasYieldData
 } from "@/lib/recipeFields";
 import { richTextToPlainText } from "@/lib/richText";
+import { getLinkedRecipeDisplayName } from "@/lib/linkedRecipeDisplayName";
 import type { Recipe } from "@/types/recipe";
 
 function formatNumber(value: number) {
@@ -89,7 +90,7 @@ export function formatRecipeAsShareText(
 
     if (ingredient.role === "preferment") {
       lines.push(
-        `• ${ingredient.name} — ${formatNumber(ingredient.quantity)} ${ingredient.unit} · Prefermento`
+        `• ${getLinkedRecipeDisplayName(ingredient, recipeLookup)} — ${formatNumber(ingredient.quantity)} ${ingredient.unit} · Prefermento`
       );
 
       if (prefermentBreakdown?.status === "resolved") {
