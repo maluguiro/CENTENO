@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -24,7 +23,9 @@ import {
   type GuideTargetRect
 } from "@/components/GuideModal";
 import { setClipboardText } from "@/lib/clipboard";
+import { showConfirmDialog, showErrorDialog, showInfoDialog } from "@/lib/dialogs";
 import { getGuideSeen, setGuideSeen } from "@/lib/guideStorage";
+import { useWebModalViewport } from "@/lib/useWebModalViewport";
 import { pickCentenoRecipeFileContent, shareCentenoRecipeFile, shareCentenoRecipesBackupFile } from "@/lib/recipeFileShare";
 import {
   exportRecipeToJson,
@@ -74,6 +75,7 @@ type HomeImportMode = "selector" | "backupCode";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { isCompactWeb, keyboardInset, viewportHeight } = useWebModalViewport();
   const {
     createRecipe,
     deleteAllRecipes,
@@ -118,6 +120,22 @@ export default function HomeScreen() {
   const searchRef = useRef<View>(null);
   const recipeListRef = useRef<View>(null);
   const newRecipeFabRef = useRef<View>(null);
+  const mobileWebModalBackdrop = isCompactWeb
+    ? {
+        justifyContent: "flex-end" as const,
+        paddingBottom: Math.max(theme.spacing.md, keyboardInset + theme.spacing.sm),
+        paddingTop: theme.spacing.md
+      }
+    : undefined;
+  const mobileWebModalCard = isCompactWeb
+    ? {
+        flexShrink: 1,
+        maxHeight: Math.max(160, viewportHeight - theme.spacing.md * 2)
+      }
+    : undefined;
+  const mobileWebModalContent = isCompactWeb
+    ? { paddingBottom: theme.spacing.lg + theme.spacing.md }
+    : undefined;
 
   useEffect(() => {
     if (!isReady || guideChecked) {
@@ -290,7 +308,7 @@ export default function HomeScreen() {
       }
 
       closeImportModal();
-      Alert.alert(
+      showInfoDialog(
         result.type === "backup"
           ? `${result.recipes.length} receta(s) importada(s) correctamente.`
           : "Receta importada correctamente."
@@ -356,7 +374,7 @@ export default function HomeScreen() {
     });
 
     closeQuickActions();
-    Alert.alert(
+    showInfoDialog(
       quickRecipe.useAsPreferment
         ? "La receta ya no se ofrece como prefermento."
         : "Receta marcada como prefermento."
@@ -438,7 +456,7 @@ export default function HomeScreen() {
     const copied = await setClipboardText(value);
 
     if (!copied) {
-      Alert.alert("El portapapeles no esta disponible en esta build.");
+      showErrorDialog("El portapapeles no esta disponible en esta build.");
       return;
     }
 
@@ -456,11 +474,11 @@ export default function HomeScreen() {
       closeQuickActions();
     } catch (error) {
       if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
-        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
+        showErrorDialog("No se pudo abrir el menu para compartir en este dispositivo.");
         return;
       }
 
-      Alert.alert("No se pudo crear el archivo de la receta.");
+      showErrorDialog("No se pudo crear el archivo de la receta.");
     }
   }
 
@@ -481,7 +499,7 @@ export default function HomeScreen() {
       }
 
       closeImportModal();
-      Alert.alert(
+      showInfoDialog(
         parsed.type === "backup"
           ? `${parsed.recipes.length} receta(s) importada(s) correctamente.`
           : "Receta importada correctamente."
@@ -509,58 +527,47 @@ export default function HomeScreen() {
 
     const recipeToDelete = quickRecipe;
     closeQuickActions();
-    Alert.alert("¿Eliminar esta receta?", "Esta accion no se puede deshacer.", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: () => deleteRecipe(recipeToDelete.id)
-      }
-    ]);
+    showConfirmDialog({
+      title: "¿Eliminar esta receta?",
+      message: "Esta accion no se puede deshacer.",
+      confirmText: "Eliminar",
+      destructive: true,
+      onConfirm: () => deleteRecipe(recipeToDelete.id)
+    });
   }
 
   function handleRestoreSamples() {
     setSettingsVisible(false);
-    Alert.alert(
-      "Restablecer recetas iniciales",
-      "Esto va a restaurar las recetas iniciales de CENTENO. No elimina tus recetas actuales.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Restablecer",
-          onPress: () => {
-            restoreSampleRecipes();
-            Alert.alert("Recetas iniciales restauradas.");
-          }
-        }
-      ]
-    );
+    showConfirmDialog({
+      title: "Restablecer recetas iniciales",
+      message: "Esto va a restaurar las recetas iniciales de CENTENO. No elimina tus recetas actuales.",
+      confirmText: "Restablecer",
+      onConfirm: () => {
+        restoreSampleRecipes();
+        showInfoDialog("Recetas iniciales restauradas.");
+      }
+    });
   }
 
   function handleDeleteAllRecipes() {
     setSettingsVisible(false);
-    Alert.alert(
-      "Eliminar todas las recetas",
-      "Esto eliminara todas tus recetas guardadas en este dispositivo. Esta accion no se puede deshacer.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Eliminar todo",
-          style: "destructive",
-          onPress: () => {
-            deleteAllRecipes();
-            Alert.alert("Todas las recetas fueron eliminadas.");
-          }
-        }
-      ]
-    );
+    showConfirmDialog({
+      title: "Eliminar todas las recetas",
+      message: "Esto eliminara todas tus recetas guardadas en este dispositivo. Esta accion no se puede deshacer.",
+      confirmText: "Eliminar todo",
+      destructive: true,
+      onConfirm: () => {
+        deleteAllRecipes();
+        showInfoDialog("Todas las recetas fueron eliminadas.");
+      }
+    });
   }
 
   async function handleExportAllRecipes() {
     setSettingsVisible(false);
 
     if (!recipes.length) {
-      Alert.alert("No hay recetas para exportar.");
+      showInfoDialog("No hay recetas para exportar.");
       return;
     }
 
@@ -568,11 +575,11 @@ export default function HomeScreen() {
       await shareCentenoRecipesBackupFile(recipes);
     } catch (error) {
       if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
-        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
+        showErrorDialog("No se pudo abrir el menu para compartir en este dispositivo.");
         return;
       }
 
-      Alert.alert("No se pudo crear el archivo de respaldo.");
+      showErrorDialog("No se pudo crear el archivo de respaldo.");
     }
   }
 
@@ -696,11 +703,11 @@ export default function HomeScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: "padding", android: "height" })}
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, mobileWebModalBackdrop]}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, mobileWebModalCard]}>
             <ScrollView
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={[styles.modalContent, mobileWebModalContent]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -762,11 +769,11 @@ export default function HomeScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: "padding", android: "height" })}
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, mobileWebModalBackdrop]}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, mobileWebModalCard]}>
             <ScrollView
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={[styles.modalContent, mobileWebModalContent]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -955,11 +962,11 @@ export default function HomeScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: "padding", android: "height" })}
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, mobileWebModalBackdrop]}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, mobileWebModalCard]}>
             <ScrollView
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={[styles.modalContent, mobileWebModalContent]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -1029,11 +1036,11 @@ export default function HomeScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: "padding", android: "height" })}
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, mobileWebModalBackdrop]}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, mobileWebModalCard]}>
             <ScrollView
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={[styles.modalContent, mobileWebModalContent]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -1111,11 +1118,11 @@ export default function HomeScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: "padding", android: "height" })}
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, mobileWebModalBackdrop]}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, mobileWebModalCard]}>
             <ScrollView
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={[styles.modalContent, mobileWebModalContent]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -1199,11 +1206,11 @@ export default function HomeScreen() {
       >
         <KeyboardAvoidingView
           behavior={Platform.select({ ios: "padding", android: "height" })}
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, mobileWebModalBackdrop]}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, mobileWebModalCard]}>
             <ScrollView
-              contentContainerStyle={styles.modalContent}
+              contentContainerStyle={[styles.modalContent, mobileWebModalContent]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -1748,4 +1755,3 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   }
 });
-

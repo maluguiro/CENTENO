@@ -45,29 +45,31 @@ export function Screen({
 
   return (
     <SafeAreaView edges={["left", "right", "bottom"]} style={styles.safeArea}>
-      {header ? (
-        <View
-          style={[
-            styles.header,
-            headerVariant === "bare" && styles.headerBare,
-            {
-              paddingTop: insets.top + theme.spacing.sm
-            }
-          ]}
-        >
-          {header}
-        </View>
-      ) : null}
-      {keyboardAware ? (
-        <KeyboardAvoidingView
-          behavior={Platform.select({ ios: "padding", android: "height" })}
-          style={styles.body}
-        >
-          {content}
-        </KeyboardAvoidingView>
-      ) : (
-        content
-      )}
+      <View style={styles.appShell}>
+        {header ? (
+          <View
+            style={[
+              styles.header,
+              headerVariant === "bare" && styles.headerBare,
+              {
+                paddingTop: insets.top + theme.spacing.sm
+              }
+            ]}
+          >
+            {header}
+          </View>
+        ) : null}
+        {keyboardAware ? (
+          <KeyboardAvoidingView
+            behavior={Platform.select({ ios: "padding", android: "height" })}
+            style={styles.body}
+          >
+            {content}
+          </KeyboardAvoidingView>
+        ) : (
+          content
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -76,6 +78,13 @@ const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: theme.colors.background,
     flex: 1
+  },
+  appShell: {
+    alignSelf: Platform.OS === "web" ? "center" : "auto",
+    flex: 1,
+    maxWidth: Platform.OS === "web" ? 480 : undefined,
+    minHeight: Platform.OS === "web" ? "100%" : undefined,
+    width: "100%"
   },
   header: {
     backgroundColor: theme.colors.accent,

@@ -1,4 +1,4 @@
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { theme } from "@/theme";
 
@@ -148,6 +148,15 @@ export function GuideModal({
   targetRects
 }: GuideModalProps) {
   const { height: screenHeight, width: screenWidth } = useWindowDimensions();
+  const webCardWidth = Math.min(Math.max(0, screenWidth - theme.spacing.md * 2), 420);
+  const webCardStyle =
+    Platform.OS === "web"
+      ? {
+          left: Math.max(theme.spacing.md, (screenWidth - webCardWidth) / 2),
+          right: undefined,
+          width: webCardWidth
+        }
+      : undefined;
   const step = guideSteps[stepIndex];
   const isFirstStep = stepIndex === 0;
   const isLastStep = stepIndex === guideSteps.length - 1;
@@ -255,6 +264,7 @@ export function GuideModal({
         <View
           style={[
             styles.cardWrap,
+            webCardStyle,
             fineTunedCardPositionStyle
           ]}
         >

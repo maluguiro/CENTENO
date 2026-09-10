@@ -11,6 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#F7F2E8"
     },
+    "web": {
+      "favicon": "./public/favicon.png"
+    },
     "plugins": [
       "expo-router"
     ],

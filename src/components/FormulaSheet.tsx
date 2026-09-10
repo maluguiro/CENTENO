@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -21,6 +20,7 @@ import { EditorialEditorSheet } from "@/components/EditorialEditorSheet";
 import { RichTextContent } from "@/components/RichTextContent";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { setClipboardText } from "@/lib/clipboard";
+import { showConfirmDialog, showErrorDialog, showThreeOptionDialog } from "@/lib/dialogs";
 import {
   applyScalingTarget,
   applyScaleByDoughWeight,
@@ -54,6 +54,7 @@ import {
 import { getIngredientRoleAppearance, ingredientRoleLabels } from "@/lib/ingredientLabels";
 import { getLinkedRecipeDisplayName } from "@/lib/linkedRecipeDisplayName";
 import { shareCentenoRecipeFile } from "@/lib/recipeFileShare";
+import { useWebModalViewport } from "@/lib/useWebModalViewport";
 import { exportRecipeToJson, type RecipeShareScope } from "@/lib/recipeImportExport";
 import { canMoveIngredient, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
@@ -860,18 +861,13 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       return;
     }
 
-    Alert.alert(
-      "Descartar cambios",
-      "Hay cambios sin guardar en esta seccion.",
-      [
-        { text: "Seguir editando", style: "cancel" },
-        {
-          text: "Descartar",
-          style: "destructive",
-          onPress: closeEditorialEditor
-        }
-      ]
-    );
+    showConfirmDialog({
+      title: "Descartar cambios",
+      message: "Hay cambios sin guardar en esta seccion.",
+      confirmText: "Descartar",
+      destructive: true,
+      onConfirm: closeEditorialEditor
+    });
   }
 
   const editorialEditorSheet =
@@ -1172,7 +1168,7 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
     const copied = await setClipboardText(value);
 
     if (!copied) {
-      Alert.alert("El portapapeles no esta disponible en esta build.");
+      showErrorDialog("El portapapeles no esta disponible en esta build.");
       return;
     }
 
@@ -1188,11 +1184,11 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
       setExportMode(null);
     } catch (error) {
       if (error instanceof Error && error.message === "SHARING_UNAVAILABLE") {
-        Alert.alert("No se pudo abrir el menu para compartir en este dispositivo.");
+        showErrorDialog("No se pudo abrir el menu para compartir en este dispositivo.");
         return;
       }
 
-      Alert.alert("No se pudo crear el archivo de la receta.");
+      showErrorDialog("No se pudo crear el archivo de la receta.");
     }
   }
 
@@ -2163,21 +2159,14 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
                 onPress={() => {
                   setMenuVisible(false);
                   if (recipe.scalingSnapshotIngredients?.length) {
-                    Alert.alert(
-                      "Quitar ajuste activo",
-                      "Queres mantener los gramos actuales o restablecer la receta al valor anterior al ajuste?",
-                      [
-                        { text: "Cancelar", style: "cancel" },
-                        {
-                          text: "Mantener actual",
-                          onPress: () => clearScalingTarget(recipe.id, false)
-                        },
-                        {
-                          text: "Restablecer anterior",
-                          onPress: () => clearScalingTarget(recipe.id, true)
-                        }
-                      ]
-                    );
+                    showThreeOptionDialog({
+                      title: "Quitar ajuste activo",
+                      message: "Queres mantener los gramos actuales o restablecer la receta al valor anterior al ajuste?",
+                      primaryText: "Mantener actual",
+                      secondaryText: "Restablecer anterior",
+                      onPrimary: () => clearScalingTarget(recipe.id, false),
+                      onSecondary: () => clearScalingTarget(recipe.id, true)
+                    });
                     return;
                   }
 
@@ -2196,8 +2185,16 @@ export function FormulaSheet({ recipe }: FormulaSheetProps) {
               label="Eliminar receta"
               onPress={() => {
                 setMenuVisible(false);
-                deleteRecipe(recipe.id);
-                router.replace("/");
+                showConfirmDialog({
+                  title: "¿Eliminar esta receta?",
+                  message: "Esta accion no se puede deshacer.",
+                  confirmText: "Eliminar",
+                  destructive: true,
+                  onConfirm: () => {
+                    deleteRecipe(recipe.id);
+                    router.replace("/");
+                  }
+                });
               }}
             />
             <Pressable
@@ -2220,13 +2217,28 @@ function CenteredModalSheet({
   children: ReactNode;
   onBackdropPress?: () => void;
 }) {
+  const { isCompactWeb, keyboardInset, viewportHeight } = useWebModalViewport();
+  const mobileWebBackdrop = isCompactWeb
+    ? {
+        justifyContent: "flex-end" as const,
+        paddingBottom: Math.max(theme.spacing.md, keyboardInset + theme.spacing.sm),
+        paddingTop: theme.spacing.md
+      }
+    : undefined;
+  const mobileWebSheet = isCompactWeb
+    ? {
+        flexShrink: 1,
+        maxHeight: Math.max(160, viewportHeight - theme.spacing.md * 2)
+      }
+    : undefined;
+
   if (!onBackdropPress) {
     return (
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", android: "height" })}
-        style={styles.centeredBackdrop}
+        style={[styles.centeredBackdrop, mobileWebBackdrop]}
       >
-        <View style={styles.centeredSheet}>
+        <View style={[styles.centeredSheet, mobileWebSheet]}>
           <ScrollView
             contentContainerStyle={styles.sheetScrollContent}
             keyboardShouldPersistTaps="handled"
@@ -2240,13 +2252,13 @@ function CenteredModalSheet({
   }
 
   return (
-    <Pressable onPress={onBackdropPress} style={styles.centeredBackdrop}>
+    <Pressable onPress={onBackdropPress} style={[styles.centeredBackdrop, mobileWebBackdrop]}>
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", android: "height" })}
         pointerEvents="box-none"
-        style={styles.centeredBackdropContent}
+        style={[styles.centeredBackdropContent, mobileWebBackdrop]}
       >
-        <Pressable onPress={() => {}} style={styles.centeredSheet}>
+        <Pressable onPress={() => {}} style={[styles.centeredSheet, mobileWebSheet]}>
           <ScrollView
             contentContainerStyle={styles.sheetScrollContent}
             keyboardShouldPersistTaps="handled"

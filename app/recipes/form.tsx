@@ -1,12 +1,13 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { IngredientEditor } from "@/components/IngredientEditor";
 import { MetricChip } from "@/components/MetricChip";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Screen } from "@/components/Screen";
 import { getBasePercent, getDoughWeight, getHydrationPercent } from "@/lib/baker";
+import { showErrorDialog } from "@/lib/dialogs";
 import { formatYieldSummary } from "@/lib/recipeFields";
 import { useRecipes } from "@/store/RecipesProvider";
 import { theme } from "@/theme";
@@ -244,12 +245,12 @@ export default function RecipeFormScreen() {
       .filter(Boolean);
 
     if (!name.trim()) {
-      Alert.alert("Falta el nombre", "La receta necesita un nombre.");
+      showErrorDialog("Falta el nombre", "La receta necesita un nombre.");
       return;
     }
 
     if (!normalizedIngredients.length) {
-      Alert.alert(
+      showErrorDialog(
         "Faltan ingredientes",
         "Agrega al menos un ingrediente con porcentaje panadero."
       );
@@ -257,7 +258,7 @@ export default function RecipeFormScreen() {
     }
 
     if (!normalizedIngredients.some((ingredient) => ingredient.role === "flour")) {
-      Alert.alert(
+      showErrorDialog(
         "Falta la harina base",
         "Agrega al menos un ingrediente con rol harina para que el calculo tenga referencia."
       );
