@@ -540,11 +540,12 @@ export default function HomeScreen() {
     setSettingsVisible(false);
     showConfirmDialog({
       title: "Restablecer recetas iniciales",
-      message: "Esto va a restaurar las recetas iniciales de CENTENO. No elimina tus recetas actuales.",
+      message:
+        "Esto restaurará las recetas iniciales oficiales de CENTENO a su versión más reciente.\n\nSi editaste alguna receta inicial, esos cambios se reemplazarán.\nTus recetas personales no se borrarán.\n\n¿Querés continuar?",
       confirmText: "Restablecer",
       onConfirm: () => {
         restoreSampleRecipes();
-        showInfoDialog("Recetas iniciales restauradas.");
+        showInfoDialog("Recetas iniciales restauradas. Tus recetas personales se conservaron.");
       }
     });
   }

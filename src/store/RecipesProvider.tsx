@@ -8,7 +8,7 @@ import {
   type PropsWithChildren
 } from "react";
 
-import { sampleRecipes } from "@/data/sampleRecipes";
+import { sampleRecipeLegacyNames, sampleRecipes } from "@/data/sampleRecipes";
 import { normalizeRecipeMetadata } from "@/lib/recipeFields";
 import type {
   Recipe,
@@ -153,6 +153,27 @@ export function mergeMissingSampleRecipes(existingRecipes: Recipe[], incomingSam
   return [...existingRecipes, ...missingSamples];
 }
 
+/**
+ * Reinstates the official recipes while preserving every non-official recipe.
+ * IDs are authoritative; the small legacy-name list handles samples created
+ * before the current stable names were introduced.
+ */
+export function restoreOfficialSampleRecipes(existingRecipes: Recipe[], incomingSamples: Recipe[]) {
+  const normalizedSamples = incomingSamples.map(normalizeRecipe);
+  const officialIds = new Set(normalizedSamples.map((recipe) => recipe.id));
+  const officialNames = new Set(
+    [...normalizedSamples.map((recipe) => recipe.name), ...sampleRecipeLegacyNames].map(
+      normalizeNameKey
+    )
+  );
+  const personalRecipes = existingRecipes.filter(
+    (recipe) =>
+      !officialIds.has(recipe.id) && !officialNames.has(normalizeNameKey(recipe.name))
+  );
+
+  return [...personalRecipes, ...normalizedSamples];
+}
+
 function recipesReducer(state: RecipesState, action: RecipesAction): RecipesState {
   switch (action.type) {
     case "hydrate":
@@ -175,7 +196,7 @@ function recipesReducer(state: RecipesState, action: RecipesAction): RecipesStat
     }
     case "restoreSamples": {
       return {
-        recipes: mergeMissingSampleRecipes(state.recipes, action.payload)
+        recipes: restoreOfficialSampleRecipes(state.recipes, action.payload)
       };
     }
     case "deleteAll":

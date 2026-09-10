@@ -247,8 +247,43 @@ function formatRange(
   return "";
 }
 
+export function formatDurationMinutes(minutes?: number) {
+  if (minutes === undefined || !Number.isFinite(minutes) || minutes <= 0) {
+    return "";
+  }
+
+  if (minutes <= 90) {
+    return `${formatNumber(minutes)} min`;
+  }
+
+  return `${formatNumber(minutes / 60)} h`;
+}
+
+export function formatDurationRange(minMinutes?: number, maxMinutes?: number) {
+  const hasMin = minMinutes !== undefined && Number.isFinite(minMinutes) && minMinutes > 0;
+  const hasMax = maxMinutes !== undefined && Number.isFinite(maxMinutes) && maxMinutes > 0;
+
+  if (hasMin && hasMax) {
+    if (minMinutes === maxMinutes) {
+      return formatDurationMinutes(minMinutes);
+    }
+
+    if (minMinutes! <= 90 && maxMinutes! <= 90) {
+      return `${formatNumber(minMinutes!)}–${formatNumber(maxMinutes!)} min`;
+    }
+
+    if (minMinutes! > 90 && maxMinutes! > 90) {
+      return `${formatNumber(minMinutes! / 60)}–${formatNumber(maxMinutes! / 60)} h`;
+    }
+
+    return `${formatDurationMinutes(minMinutes)}–${formatDurationMinutes(maxMinutes)}`;
+  }
+
+  return formatDurationMinutes(hasMin ? minMinutes : maxMinutes);
+}
+
 export function formatTimeRange(minMinutes?: number, maxMinutes?: number) {
-  return formatRange(minMinutes, maxMinutes, " min");
+  return formatDurationRange(minMinutes, maxMinutes);
 }
 
 export function formatTemperatureRange(minC?: number, maxC?: number) {

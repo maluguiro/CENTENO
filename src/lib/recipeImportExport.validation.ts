@@ -18,6 +18,7 @@ import { buildCentenoBackupFileName, buildCentenoFileName } from "@/lib/recipeFi
 import { canMoveIngredient, getPrimaryFlourIndex, moveIngredientInList } from "@/lib/recipeOrder";
 import { formatRecipeAsShareText } from "@/lib/recipeShareText";
 import { getLinkedRecipeDisplayName } from "@/lib/linkedRecipeDisplayName";
+import { formatDurationMinutes, formatDurationRange } from "@/lib/recipeFields";
 import { sampleRecipes } from "@/data/sampleRecipes";
 import {
   parseRichTextDocument,
@@ -254,6 +255,24 @@ const parentRecipe: Recipe = {
 };
 
 function runRecipeValidation() {
+  assert(formatDurationMinutes(45) === "45 min", "45 minutos debe mostrarse en minutos.");
+  assert(formatDurationMinutes(90) === "90 min", "90 minutos debe mostrarse en minutos.");
+  assert(formatDurationMinutes(120) === "2 h", "120 minutos debe mostrarse como 2 h.");
+  assert(formatDurationMinutes(150) === "2.5 h", "150 minutos debe mostrarse como 2.5 h.");
+  assert(formatDurationMinutes(720) === "12 h", "720 minutos debe mostrarse como 12 h.");
+  assert(
+    formatDurationRange(60, 90) === "60–90 min",
+    "El rango corto debe conservar minutos."
+  );
+  assert(
+    formatDurationRange(120, 150) === "2–2.5 h",
+    "El rango largo debe mostrarse en horas."
+  );
+  assert(
+    formatDurationRange(720, 1440) === "12–24 h",
+    "El rango de Poolish debe mostrarse en horas."
+  );
+
   const renamedPreferment: Recipe = {
     ...prefermentRecipe,
     name: "MM centeno 60%"
