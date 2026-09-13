@@ -57,7 +57,13 @@ export async function getGuideSeen() {
 }
 
 export async function setGuideSeen() {
-  await storage.setItem(GUIDE_STORAGE_KEY, "true");
+  try {
+    await storage.setItem(GUIDE_STORAGE_KEY, "true");
+  } catch (error) {
+    if (isDev) {
+      console.warn("[CENTENO] guide: failed to persist", error);
+    }
+  }
 }
 
 export { GUIDE_STORAGE_KEY };

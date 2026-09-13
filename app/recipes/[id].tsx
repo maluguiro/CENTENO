@@ -8,8 +8,12 @@ import { theme } from "@/theme";
 
 export default function RecipeDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
-  const { getRecipeById } = useRecipes();
+  const { getRecipeById, isReady } = useRecipes();
   const recipe = getRecipeById(params.id);
+
+  if (!isReady) {
+    return null;
+  }
 
   if (!recipe) {
     return (

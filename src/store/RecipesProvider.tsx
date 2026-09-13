@@ -37,7 +37,54 @@ const memoryStorage: StorageLike = {
   }
 };
 
+type StorageStatus = "ok" | "memory";
+
+let initialStorageStatus: StorageStatus = "ok";
+
+function hasWebStorage(): boolean {
+  try {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const webStorage = window.localStorage;
+    return webStorage != null;
+  } catch {
+    return false;
+  }
+}
+
+function createWebStorage(): StorageLike {
+  try {
+    const probeKey = `${STORAGE_KEY}.probe`;
+    window.localStorage.setItem(probeKey, "1");
+    const roundTrip = window.localStorage.getItem(probeKey) === "1";
+    window.localStorage.removeItem(probeKey);
+    if (!roundTrip) {
+      throw new Error("web storage probe failed");
+    }
+
+    return {
+      async getItem(key) {
+        return window.localStorage.getItem(key);
+      },
+      async setItem(key, value) {
+        window.localStorage.setItem(key, value);
+      }
+    };
+  } catch (error) {
+    initialStorageStatus = "memory";
+    if (isDev) {
+      console.warn("[CENTENO] storage: web storage unavailable, falling back to memory", error);
+    }
+    return memoryStorage;
+  }
+}
+
 function getStorage(): StorageLike {
+  if (hasWebStorage()) {
+    return createWebStorage();
+  }
+
   try {
     const module = require("@react-native-async-storage/async-storage");
     const asyncStorage = module?.default;
@@ -55,6 +102,7 @@ function getStorage(): StorageLike {
   } catch {
   }
 
+  initialStorageStatus = "memory";
   if (isDev) {
     console.warn("[CENTENO] storage: AsyncStorage unavailable, falling back to memory");
   }
@@ -81,6 +129,7 @@ type RecipesAction =
 type RecipesContextValue = {
   recipes: Recipe[];
   isReady: boolean;
+  storageStatus: StorageStatus;
   createRecipe: (draft: RecipeDraft) => string;
   importRecipe: (recipe: Recipe) => string;
   importRecipes: (recipes: Recipe[]) => number;
@@ -256,6 +305,7 @@ export function RecipesProvider({ children }: PropsWithChildren) {
     recipes: sampleRecipes.map(normalizeRecipe)
   });
   const [isReady, setIsReady] = useState(false);
+  const [storageStatus, setStorageStatus] = useState<StorageStatus>(initialStorageStatus);
 
   useEffect(() => {
     let isMounted = true;
@@ -304,9 +354,11 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       console.log("[CENTENO] storage: persisting", state.recipes.length, "recipes");
     }
     storage.setItem(STORAGE_KEY, JSON.stringify(state.recipes)).catch((error) => {
-      if (isDev) {
-        console.error("[CENTENO] storage: persist failed", error);
-      }
+      console.error(
+        "[CENTENO] storage: persist failed, changes may not survive a reload",
+        error
+      );
+      setStorageStatus("memory");
     });
   }, [isReady, state.recipes]);
 
@@ -314,6 +366,7 @@ export function RecipesProvider({ children }: PropsWithChildren) {
     return {
       recipes: state.recipes,
       isReady,
+      storageStatus,
       createRecipe: (draft) => {
         const timestamp = new Date().toISOString();
         const metadata = normalizeRecipeMetadata(draft);
@@ -394,7 +447,7 @@ export function RecipesProvider({ children }: PropsWithChildren) {
       },
       getRecipeById: (id) => state.recipes.find((recipe) => recipe.id === id)
     };
-  }, [isReady, state.recipes]);
+  }, [isReady, state.recipes, storageStatus]);
 
   return <RecipesContext.Provider value={value}>{children}</RecipesContext.Provider>;
 }

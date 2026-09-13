@@ -85,6 +85,7 @@ export default function HomeScreen() {
     isReady,
     recipes,
     restoreSampleRecipes,
+    storageStatus,
     updateRecipe
   } =
     useRecipes();
@@ -678,6 +679,14 @@ export default function HomeScreen() {
           value={query}
         />
       </View>
+      {storageStatus === "memory" ? (
+        <View style={styles.storageWarning}>
+          <Text style={styles.storageWarningText}>
+            El almacenamiento no esta disponible en este navegador: los cambios se perderan al
+            cerrar esta ventana.
+          </Text>
+        </View>
+      ) : null}
       <View onLayout={measureGuideTargets} ref={recipeListRef} style={styles.list}>
         {filteredRecipes.map((recipe) => (
           <FormulaListItem
@@ -1427,6 +1436,21 @@ const styles = StyleSheet.create({
   list: {
     marginTop: theme.spacing.sm,
     paddingBottom: theme.spacing.xxl
+  },
+  storageWarning: {
+    backgroundColor: theme.colors.surfaceMuted,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1,
+    marginTop: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm
+  },
+  storageWarningText: {
+    color: theme.colors.text,
+    fontSize: theme.typography.body,
+    fontWeight: "600",
+    lineHeight: 18
   },
   filterButton: {
     alignItems: "center",
