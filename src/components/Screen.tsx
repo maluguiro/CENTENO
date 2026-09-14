@@ -84,6 +84,8 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: Platform.OS === "web" ? 480 : undefined,
     minHeight: Platform.OS === "web" ? "100%" : undefined,
+    minWidth: 0,
+    overflow: Platform.OS === "web" ? "hidden" : "visible",
     width: "100%"
   },
   header: {
@@ -98,7 +100,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0
   },
   body: {
-    flex: 1
+    flex: 1,
+    minWidth: 0
   },
   backgroundLayer: {
     bottom: 0,
@@ -110,6 +113,7 @@ const styles = StyleSheet.create({
   content: {
     backgroundColor: "transparent",
     gap: theme.spacing.md,
+    minWidth: 0,
     paddingBottom: theme.spacing.xxl
   },
   padded: {

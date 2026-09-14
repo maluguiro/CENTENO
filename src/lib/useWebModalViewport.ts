@@ -1,13 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
 type WebModalViewport = {
   isCompactWeb: boolean;
+  isKeyboardVisible: boolean;
   keyboardInset: number;
   viewportHeight: number;
 };
 
-function readViewport(): Omit<WebModalViewport, "isCompactWeb"> & { width: number } {
+type ViewportMeasurement = {
+  keyboardInset: number;
+  viewportHeight: number;
+  width: number;
+};
+
+function readViewport(): ViewportMeasurement {
   if (typeof window === "undefined") {
     return { keyboardInset: 0, viewportHeight: 0, width: 0 };
   }
@@ -28,14 +35,35 @@ function readViewport(): Omit<WebModalViewport, "isCompactWeb"> & { width: numbe
 
 /** Tracks the browser's visible viewport while a virtual keyboard is open. */
 export function useWebModalViewport(): WebModalViewport {
-  const [viewport, setViewport] = useState(readViewport);
+  const [viewport, setViewport] = useState(() => ({
+    ...readViewport(),
+    isKeyboardVisible: false
+  }));
+  const maxViewportHeight = useRef(viewport.viewportHeight);
+  const viewportWidth = useRef(viewport.width);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") {
       return;
     }
 
-    const updateViewport = () => setViewport(readViewport());
+    const updateViewport = () => {
+      const next = readViewport();
+      const widthChanged = Math.abs(next.width - viewportWidth.current) > 100;
+
+      if (widthChanged) {
+        maxViewportHeight.current = next.viewportHeight;
+      } else {
+        maxViewportHeight.current = Math.max(maxViewportHeight.current, next.viewportHeight);
+      }
+
+      viewportWidth.current = next.width;
+      setViewport({
+        ...next,
+        isKeyboardVisible:
+          next.keyboardInset > 0 || maxViewportHeight.current - next.viewportHeight > 120
+      });
+    };
     const visualViewport = window.visualViewport;
 
     updateViewport();
@@ -52,6 +80,7 @@ export function useWebModalViewport(): WebModalViewport {
 
   return {
     isCompactWeb: Platform.OS === "web" && viewport.width < 600,
+    isKeyboardVisible: viewport.isKeyboardVisible,
     keyboardInset: viewport.keyboardInset,
     viewportHeight: viewport.viewportHeight
   };

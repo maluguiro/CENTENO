@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getRecipeSummary } from "@/lib/baker";
 import { theme } from "@/theme";
@@ -37,11 +37,11 @@ export function FormulaListItem({
         ) : null}
       </View>
       <View style={styles.meta}>
-        <Text style={styles.value}>{summary.hydration}%</Text>
+        <Text numberOfLines={1} style={styles.value}>{summary.hydration}%</Text>
         <Text style={styles.label}>hidr.</Text>
       </View>
       <View style={styles.meta}>
-        <Text style={styles.value}>{summary.doughWeight} g</Text>
+        <Text numberOfLines={1} style={styles.value}>{summary.doughWeight} g</Text>
         <Text style={styles.label}>masa</Text>
       </View>
     </Pressable>
@@ -53,8 +53,9 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.border,
     borderBottomWidth: 1,
     flexDirection: "row",
-    gap: theme.spacing.md,
+    gap: Platform.OS === "web" ? 10 : theme.spacing.md,
     minHeight: 76,
+    minWidth: 0,
     paddingVertical: 16
   },
   rowPressed: {
@@ -63,8 +64,10 @@ const styles = StyleSheet.create({
   },
   main: {
     flex: 1,
+    flexShrink: 1,
     justifyContent: "center",
-    minHeight: 44
+    minHeight: 44,
+    minWidth: 0
   },
   name: {
     color: theme.colors.text,
@@ -80,12 +83,15 @@ const styles = StyleSheet.create({
   },
   meta: {
     alignItems: "flex-end",
+    flexShrink: 1,
     justifyContent: "center",
-    minWidth: 74
+    maxWidth: Platform.OS === "web" ? 82 : undefined,
+    minWidth: Platform.OS === "web" ? 0 : 74,
+    width: Platform.OS === "web" ? "22%" : undefined
   },
   value: {
     color: theme.colors.accentDeep,
-    fontSize: 16,
+    fontSize: Platform.OS === "web" ? 14 : 16,
     fontWeight: "800"
   },
   label: {

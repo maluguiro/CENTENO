@@ -75,7 +75,7 @@ type HomeImportMode = "selector" | "backupCode";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { isCompactWeb, keyboardInset, viewportHeight } = useWebModalViewport();
+  const { isCompactWeb, isKeyboardVisible, keyboardInset, viewportHeight } = useWebModalViewport();
   const {
     createRecipe,
     deleteAllRecipes,
@@ -123,8 +123,10 @@ export default function HomeScreen() {
   const newRecipeFabRef = useRef<View>(null);
   const mobileWebModalBackdrop = isCompactWeb
     ? {
-        justifyContent: "flex-end" as const,
-        paddingBottom: Math.max(theme.spacing.md, keyboardInset + theme.spacing.sm),
+        justifyContent: isKeyboardVisible ? ("flex-end" as const) : ("center" as const),
+        paddingBottom: isKeyboardVisible
+          ? Math.max(theme.spacing.md, keyboardInset + theme.spacing.sm)
+          : theme.spacing.md,
         paddingTop: theme.spacing.md
       }
     : undefined;
@@ -135,7 +137,7 @@ export default function HomeScreen() {
       }
     : undefined;
   const mobileWebModalContent = isCompactWeb
-    ? { paddingBottom: theme.spacing.lg + theme.spacing.md }
+    ? { paddingBottom: theme.spacing.lg + (isKeyboardVisible ? theme.spacing.md : 0) }
     : undefined;
 
   useEffect(() => {

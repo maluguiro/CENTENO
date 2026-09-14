@@ -2217,11 +2217,13 @@ function CenteredModalSheet({
   children: ReactNode;
   onBackdropPress?: () => void;
 }) {
-  const { isCompactWeb, keyboardInset, viewportHeight } = useWebModalViewport();
+  const { isCompactWeb, isKeyboardVisible, keyboardInset, viewportHeight } = useWebModalViewport();
   const mobileWebBackdrop = isCompactWeb
     ? {
-        justifyContent: "flex-end" as const,
-        paddingBottom: Math.max(theme.spacing.md, keyboardInset + theme.spacing.sm),
+        justifyContent: isKeyboardVisible ? ("flex-end" as const) : ("center" as const),
+        paddingBottom: isKeyboardVisible
+          ? Math.max(theme.spacing.md, keyboardInset + theme.spacing.sm)
+          : theme.spacing.md,
         paddingTop: theme.spacing.md
       }
     : undefined;
